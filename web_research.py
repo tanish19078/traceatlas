@@ -45,6 +45,8 @@ def normalize_url(value):
         raise AccessError('ip_literals_not_allowed')
     if '.' not in host or host.endswith(('.local', '.localhost', '.internal', '.invalid')):
         raise AccessError('non_public_hostname')
+    if len(host) > 253 or any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', label) for label in host.split('.')):
+        raise AccessError('invalid_hostname')
     return urlunsplit(('https', host, parsed.path or '/', parsed.query, ''))
 
 

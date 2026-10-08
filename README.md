@@ -78,13 +78,24 @@ python demo.py
 python verify_evidence.py runs/demo
 ```
 
-The current suite contains 43 regression tests covering identity mismatches,
+The current suite contains 47 regression tests covering identity mismatches,
 missing values, source integrity, partial refreshes, batch completion, output
 escaping, private-network targets, DNS pinning, robots rules and website evidence.
 The auditor uses explicit validation and also works under `python -O`. Empty and
 incomplete exports fail verification; use `--expected-count` for an independent
 expected row count. The auditor checks saved claims against source snapshots; it does not
 independently establish source truth or external recall.
+
+GitHub Actions runs the regression suite, offline demo, optimized audit and
+compilation checks on Python 3.11, 3.12 and 3.13 for pushes and pull requests.
+Action dependencies are pinned to verified release commit hashes; the workflow
+uses read-only repository access and does not retain checkout credentials.
+
+A separate offline scale check processed 1,000 input rows (900 duplicate valid
+fixture inputs and 100 deliberately invalid inputs), retained input ordering,
+and audited all 2,700 current claims successfully. This checks completion and
+storage behavior; it does not measure live throughput, entity diversity or
+external recall.
 
 A live operational check on 8 October 2026 returned 100 results from 100 public
 registry inputs, with 803 claims verified against their saved responses, zero

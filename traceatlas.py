@@ -5,6 +5,7 @@ import concurrent.futures
 import hashlib
 import html
 import json
+import math
 import os
 import tempfile
 import sqlite3
@@ -367,7 +368,7 @@ def main():
     parser.add_argument('--timeout', type=float, default=12)
     parser.add_argument('--allow-domain', action='append', default=[], help='Reviewed public website hostname; enables opt-in website research (repeatable)')
     args = parser.parse_args()
-    if not 1 <= args.workers <= 8 or args.budget_seconds <= 0 or args.timeout <= 0:
+    if not 1 <= args.workers <= 8 or any(not math.isfinite(value) or value <= 0 for value in (args.budget_seconds, args.timeout)):
         parser.error('workers must be 1..8; budget and timeout must be positive')
     from web_research import normalize_url
     from urllib.parse import urlsplit
@@ -381,7 +382,13 @@ def main():
             parser.error('allow-domain must be a public HTTPS hostname')
     if args.fixtures and domains:
         parser.error('fixture mode never makes website requests')
-    report = run_batch(read_inputs(args.input), args.output, args.fixtures,
+    try:
+        numbers = read_inputs(args.input)
+    except (OSError, UnicodeError):
+        parser.error('input file must be readable UTF-8 text')
+    if not numbers:
+        parser.error('input file must contain at least one organization number')
+    report = run_batch(numbers, args.output, args.fixtures,
                        args.workers, args.budget_seconds, args.timeout, domains)
     print(json.dumps(report, indent=2))
     return 0 if report['states']['failed'] == 0 else 2
