@@ -3,7 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-from traceatlas import BASE, STATES
+from traceatlas import BASE, STATES, FIELDS
 
 
 def require(condition, message):
@@ -53,18 +53,40 @@ def verify(root, expected_count=None):
                 key = item['content_sha256']
                 require(isinstance(key, str) and len(key) == 64 and all(c in '0123456789abcdef' for c in key), 'invalid snapshot hash')
                 require(item['id'] == key, 'evidence id/hash mismatch')
-                body = (root / 'snapshots' / (key + '.json')).read_bytes()
+                source_class = item['source_class']
+                require(source_class in ('official_registry', 'verified_company_website'), 'unknown source class')
+                suffix = '.json' if source_class == 'official_registry' else '.html'
+                require(item['snapshot_path'] == 'snapshots/' + key + suffix, 'wrong snapshot path')
+                body = (root / 'snapshots' / (key + suffix)).read_bytes()
                 require(hashlib.sha256(body).hexdigest() == key, 'snapshot hash mismatch')
-                data = json.loads(body)
-                require(data['organisasjonsnummer'] == result['organisation_number'], 'wrong company')
-                require(item['source_url'] == BASE + result['organisation_number'], 'wrong source URL')
                 require(item['retrieved_at'], 'missing retrieval date')
-                pointer = claim['json_pointer']
-                require(isinstance(pointer, str) and pointer.startswith('/'), 'invalid pointer')
-                value = data
-                for segment in pointer[1:].split('/'):
-                    segment = segment.replace('~1', '/').replace('~0', '~')
-                    value = value[int(segment)] if isinstance(value, list) else value[segment]
+                if source_class == 'official_registry':
+                    data = json.loads(body)
+                    require(data['organisasjonsnummer'] == result['organisation_number'], 'wrong company')
+                    require(data['navn'] == result['legal_identity']['name'], 'wrong legal name')
+                    require(item['source_url'] == BASE + result['organisation_number'], 'wrong source URL')
+                    fields = dict(FIELDS, registered_employees='antallAnsatte')
+                    require(claim['field'] in fields, 'unknown registry field')
+                    pointer = claim['json_pointer']
+                    require(pointer == '/' + fields[claim['field']], 'wrong field pointer')
+                    if claim['field'] == 'registered_employees':
+                        require(data.get('harRegistrertAntallAnsatte') is True, 'employee count not confirmed')
+                    value = data[fields[claim['field']]]
+                else:
+                    from web_research import Document, normalize_url, verify_identity
+                    require(normalize_url(item['source_url']) == item['source_url'], 'unsafe website URL')
+                    require(claim['field'] in ('website_identity', 'company_page'), 'unknown website field')
+                    require(claim['subject'] == claim['field'] + ':' + item['source_url'], 'wrong website subject')
+                    require(item['extractor_version'] == claim['extraction_method'] == 'visible_text_v1', 'unknown website extractor')
+                    document = Document(body)
+                    proof = verify_identity(document, result['organisation_number'], result['legal_identity']['name'])
+                    require(proof is not None and proof == item['identity_span'], 'website entity proof missing')
+                    span = claim['text_span']
+                    require(isinstance(span, list) and len(span) == 2 and all(type(x) is int for x in span), 'invalid text span')
+                    start, end = span
+                    require(0 <= start < end <= len(document.text), 'text span out of bounds')
+                    require(start <= proof[0] and end >= proof[1], 'identity passage omits proof')
+                    value = document.text[start:end]
                 require(type(value) is type(claim['value']) and value == claim['value'], 'unsupported claim value')
                 checked += 1
             rows.append(result)
