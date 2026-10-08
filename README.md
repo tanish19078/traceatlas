@@ -2,19 +2,15 @@
 
 **Company intelligence, backed by evidence.**
 
-TraceAtlas is an evidence-preserving research agent for Norwegian companies.
-Its first working milestone retrieves official registry facts, validates the
-organisation number, saves immutable source snapshots, and explains changes
-between runs. A portable evidence explorer lets you inspect each claim.
+TraceAtlas researches Norwegian companies by organisation number and preserves
+the source behind every published fact. The current release retrieves official
+registry records, saves source snapshots, tracks changes and generates an HTML
+evidence explorer.
 
-> **Status: registry baseline, not competition-ready.** Public website discovery,
-> exact domain verification, external jobs/news/financial extraction and model
-> synthesis are planned. No official score or qualification is claimed.
+## Quick start
 
-## Run in under a minute
-
-Requires **Python 3.11 or newer** with SQLite and HTTPS support. There are **no
-third-party Python dependencies, paid APIs, or model keys** in this baseline.
+Python 3.11+ with SQLite and HTTPS support. No third-party dependencies or API
+keys are required for the current registry connector.
 
 ```bash
 git clone https://github.com/tanish19078/traceatlas.git
@@ -22,92 +18,88 @@ cd traceatlas
 python demo.py
 ```
 
-Open `runs/demo/index.html` for the offline demonstration. The example is
-conspicuously labelled **synthetic** and must not be used as company research.
+Open `runs/demo/index.html`. The offline demo uses explicitly labelled synthetic
+facts; it is an interface demonstration, not research about a real company.
 
-Audit saved claims against their original source bodies:
-
-```bash
-python verify_evidence.py runs/demo
-```
-
-Run tests:
-
-```bash
-python -m unittest -v
-```
-
-For real research, create `companies.txt` with one Norwegian organisation number
-per line (or JSONL objects with `organisation_number`), then run:
+For live research, put one organisation number per line in `companies.txt`:
 
 ```bash
 python traceatlas.py --input companies.txt --output runs/live --workers 4 --budget-seconds 300
+python verify_evidence.py runs/live
 ```
 
-The command writes:
+JSONL inputs with `organisation_number` or `organisasjonsnummer` are also accepted.
+Use the same output directory on subsequent runs to inspect supported changes.
+Use a separate directory for independent evaluations; concurrent writers to one
+directory are not supported.
 
-| Artifact | Purpose |
+## Results
+
+| File | Contents |
 | --- | --- |
-| `profiles.jsonl` | Exactly one terminal envelope per input row, in input order |
-| `snapshots/<sha256>.json` | Immutable original registry response bodies |
+| `profiles.jsonl` | Company results in input order, with claims and availability states |
+| `snapshots/<sha256>.json` | Original registry responses |
 | `history.sqlite3` | Observations and latest supported profiles |
-| `report.json` | Counts, elapsed time, mode and limitations |
-| `index.html` | Local, responsive evidence explorer |
+| `report.json` | Run counts, duration and declared limitations |
+| `index.html` | Evidence explorer with sources and refresh changes |
 
-Re-run against the **same output directory** to preserve history and inspect
-changes. Use a new directory for isolated evaluations. Do not run two writers
-against the same output directory concurrently. Runtime artifacts are ignored by
-Git; preserve the complete directory when archiving evidence.
+Each claim carries a source hash, retrieval timestamp, extraction method and
+JSON pointer to the supporting value. Reporting periods remain unset when the
+source provides none. Missing employee counts are not replaced with zero.
+Unsuccessful refreshes expose previous evidence as `last_known`.
 
-Exit code `0` means no input ended in `failed`; it does **not** mean every company
-was found. Exit code `2` means one or more inputs failed. Missing and blocked
-sources have distinct states. Invalid inputs still receive envelopes.
+Exit code `0` means no input ended in `failed`, not that all information was
+available. Exit code `2` means at least one input failed. Missing, blocked and
+ambiguous results are explicit.
 
-## What makes the facts traceable?
+## Verification
 
-Each claim includes its field, supported value, evidence hash, extraction method
-and exact JSON pointer. Evidence records include source URL, retrieval timestamp,
-parser version and a snapshot location. Reporting periods remain null when the
-source provides none. Registered dates are not substituted for financial periods.
+```bash
+python -m unittest -v
+python demo.py
+python verify_evidence.py runs/demo
+```
 
-- Identity must match the requested organisation number exactly.
-- A website in the registry is an **unverified candidate**, never automatic proof
-  that a brand or group site belongs to the requested entity.
-- Missing employee counts stay missing. A genuine registered zero stays zero.
-- Failed refreshes expose stale values under `last_known`, not as current claims.
-- Identical source snapshots cause no false fact changes.
-- A disappearing source field is `no_longer_reported`, not a claim that something
-  stopped existing in the real world.
-- Facts from source text are escaped before they appear in the HTML viewer.
+The current suite contains 22 regression tests covering identity mismatches,
+missing values, source integrity, refresh behavior, batch completion and output
+escaping. The auditor checks saved claims against source snapshots; it does not
+independently establish source truth or external recall.
 
-## Competition contract and limits
+A live operational check on 8 October 2026 returned 100 results from 100 public
+registry inputs, with 803 claims verified against their saved responses, zero
+failed lookups and a runtime of 149.473 seconds with four workers. Inputs came
+from the first page of the registry API, not a random or contest-universe sample.
+This check is not an official competition score. The input-file SHA-256 was
+`4e2acffa8bd2308ef7ed21e1924fdcb2162342aa1babd7317e1ffdb52cb47b02`.
 
-The current CLI is TraceAtlas's own documented baseline interface. Adaptation to
-the organizer's exact supplied input/output schema is still required. The local
-smoke test is an operational check, not the hidden evaluation or a measured recall
-score. This version intentionally leaves external information unresearched.
+## Current scope
 
-There is at most one registry request per valid input, bounded concurrency (1–8),
-a per-request timeout, a 2 MB response limit and no redirects. Work that cannot
-start before the soft batch deadline emits a failure envelope. Python/OS network
-and thread cleanup may exceed the deadline slightly; a hard process deadline and
-checkpointed recovery remain on the roadmap. There are no retry storms or paid
-fallbacks. No runtime dependency installation is necessary.
+This release is a registry baseline. Website discovery and exact-domain
+verification, external leadership/jobs/news/financial research, and adaptive
+agent planning are not implemented. Registry website fields remain unverified
+candidates. There is no official qualification result.
 
-## Build plan
+The organizer's exact input/output adapter, larger-batch validation and hard
+execution deadline still need to be completed. The current budget is a soft
+work deadline; network/thread cleanup may exceed it. A storage failure can
+interrupt export. Audit checks currently use Python assertions: run the auditor
+without `-O` until explicit validation replaces them.
 
-See [ROADMAP.md](ROADMAP.md) for milestones, evaluation gates and submission
-questions; [SECURITY.md](SECURITY.md) for source and data boundaries.
+## Sources and access
 
-The project prioritizes exact-company precision, then useful external coverage.
-Small, meaningful commits document working improvements and regression fixes.
+The connector requests only the fixed HTTPS Brønnøysundregistrene entity endpoint.
+It follows no redirects, bounds concurrency to 1–8 workers, limits responses to
+2 MB and uses request timeouts. No paid APIs or models are used in this release.
 
-## Sources
+Company URLs are candidates until verified against the exact legal entity.
+Search snippets cannot support published facts. Future connectors must use
+permitted access, preserve evidence and keep parent/subsidiary facts distinct.
 
-- [Brønnøysundregistrene API documentation](https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/index.html)
+Runtime data and databases are excluded from Git. Preserve the complete output
+directory when archiving evidence; do not publish credentials or private data.
+Source data retains its original attribution and reuse conditions.
+
+- [Registry API documentation](https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/index.html)
 - [Signalpost challenge](https://builderr.ai/challenges/signalpost)
 - [Evaluation contract](https://builderr.ai/docs/signalpost-evaluation-harness.md)
 - [Permitted source policy](https://builderr.ai/starter-briefs/signalpost-sources.md)
-
-Registry data remains subject to its original attribution and reuse conditions.
-The code license does not relicense source data or company content.
