@@ -1,0 +1,32 @@
+name: Engineering checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Regression suite
+        run: python -m unittest -v
+      - name: Offline demo and optimized evidence audit
+        run: |
+          python demo.py
+          python -O verify_evidence.py runs/demo --expected-count 1
+      - name: Compile entry points
+        run: python -m py_compile traceatlas.py web_research.py verify_evidence.py demo.py
