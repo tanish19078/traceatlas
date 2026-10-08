@@ -166,6 +166,27 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(report['mode'], 'fixture')
             self.assertTrue(result['evidence'][0]['synthetic'])
 
+    def test_one_storage_failure_does_not_drop_other_results(self):
+        save = t.Store.save
+        def fail_one(store, result, body):
+            if result['organisation_number'] == 'bad':
+                raise OSError('simulated disk issue')
+            return save(store, result, body)
+        with tempfile.TemporaryDirectory() as folder, patch.object(t, 'fetch', return_value=fixture()), patch.object(t.Store, 'save', fail_one):
+            report = t.run_batch([ORG, 'bad', ORG], folder)
+            rows = [json.loads(line) for line in (Path(folder) / 'profiles.jsonl').read_text().splitlines()]
+            self.assertEqual(report['output_count'], 3)
+            self.assertEqual(rows[1]['errors'], ['storage_OSError'])
+            self.assertEqual(rows[2]['state'], 'available')
+            self.assertEqual(len((Path(folder) / 'completion.jsonl').read_text().splitlines()), 3)
+
+    def test_worker_exception_is_a_terminal_result(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(t, 'research', side_effect=RuntimeError('simulated')):
+            report = t.run_batch([ORG, ORG], folder)
+            self.assertEqual(report['states']['failed'], 2)
+            rows = [json.loads(line) for line in (Path(folder) / 'profiles.jsonl').read_text().splitlines()]
+            self.assertEqual([r['input_index'] for r in rows], [0, 1])
+
     def test_jsonl_and_text_inputs(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)/'input.txt'

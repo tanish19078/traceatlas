@@ -5,6 +5,8 @@ import concurrent.futures
 import hashlib
 import html
 import json
+import os
+import tempfile
 import sqlite3
 import sys
 import time
@@ -165,7 +167,7 @@ class Store:
             key = digest(body)
             path = self.root / 'snapshots' / (key + '.json')
             if not path.exists():
-                path.write_bytes(body)
+                atomic_write(path, body)
             elif digest(path.read_bytes()) != key:
                 raise ValueError('stored_snapshot_integrity_failure')
         changes = []
@@ -214,26 +216,54 @@ def read_inputs(path):
     return numbers
 
 
+def atomic_write(path, content):
+    """Replace an artifact only after its full contents are flushed to disk."""
+    path = Path(path)
+    fd, temporary = tempfile.mkstemp(prefix='.' + path.name, dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(content if isinstance(content, bytes) else content.encode('utf-8'))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=12):
     started = time.monotonic()
     root = Path(output)
     store = Store(root)
-    # All tasks check a shared deadline before starting. Individual requests have
-    # bounded timeouts. An envelope is emitted even when work cannot begin.
     def task(number):
         remaining = budget - (time.monotonic() - started)
         if remaining <= 0:
             return envelope(number, 'failed', 'time_budget_exhausted'), None
         return research(number, fixture_dir, min(timeout, max(0.1, remaining)))
-    results = []
+    results = [None] * len(numbers)
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            for result, body in pool.map(task, numbers):
-                results.append(store.save(result, body))
-        output_file = root / 'profiles.jsonl'
-        temp = root / 'profiles.jsonl.tmp'
-        temp.write_text(''.join(canonical(r) + '\n' for r in results))
-        temp.replace(output_file)
+        # Completion journal is independent of SQLite. A worker/store error must
+        # not prevent a terminal envelope for every other input.
+        with (root / 'completion.jsonl').open('w', encoding='utf-8') as journal:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                pending = {pool.submit(task, number): index for index, number in enumerate(numbers)}
+                for future in concurrent.futures.as_completed(pending):
+                    index = pending[future]
+                    try:
+                        result, body = future.result()
+                    except Exception as exc:
+                        result, body = envelope(numbers[index], 'failed', 'worker_' + type(exc).__name__), None
+                    try:
+                        result = store.save(result, body)
+                    except Exception as exc:
+                        result = envelope(numbers[index], 'failed', 'storage_' + type(exc).__name__)
+                    result['input_index'] = index
+                    result['source_mode'] = 'fixture' if fixture_dir else 'live'
+                    results[index] = result
+                    journal.write(canonical(result) + '\n')
+                    journal.flush()
+                    os.fsync(journal.fileno())
+        atomic_write(root / 'profiles.jsonl', ''.join(canonical(r) + '\n' for r in results))
         counts = {state: sum(r['state'] == state for r in results) for state in sorted(STATES)}
         report = {'version': VERSION, 'mode': 'fixture' if fixture_dir else 'live',
                   'input_count': len(numbers), 'output_count': len(results),
@@ -243,7 +273,7 @@ def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=
                   'external_api_cost_usd': 0, 'models': [],
                   'limitations': ['Registry baseline only; external discovery not implemented.',
                                   'Not an official evaluation or qualification result.']}
-        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+        atomic_write(root / 'report.json', json.dumps(report, indent=2) + '\n')
         render(results, root / 'index.html')
         return report
     finally:
