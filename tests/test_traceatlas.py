@@ -5,7 +5,8 @@ import unittest
 import urllib.error
 from pathlib import Path
 from unittest.mock import patch
-import traceatlas as t
+import traceatlas.core as t
+import traceatlas.registry as registry
 
 ORG = '923609016'
 OTHER = '974760673'
@@ -26,25 +27,25 @@ class ResearchTests(unittest.TestCase):
             self.assertFalse(t.valid_org(bad))
 
     def test_bad_input_never_fetches(self):
-        with patch.object(t, 'fetch') as fetch:
+        with patch.object(registry, 'fetch') as fetch:
             result, body = t.research('../secret')
         fetch.assert_not_called()
         self.assertEqual(result['state'], 'failed')
 
     def test_wrong_identity_publishes_no_claims(self):
-        with patch.object(t, 'fetch', return_value=fixture(organisasjonsnummer=OTHER)):
+        with patch.object(registry, 'fetch', return_value=fixture(organisasjonsnummer=OTHER)):
             result, body = t.research(ORG)
         self.assertEqual(result['state'], 'ambiguous')
         self.assertEqual(result['claims'], [])
         self.assertIsNone(body)
 
     def test_absent_employee_count_is_not_zero(self):
-        with patch.object(t, 'fetch', return_value=fixture(harRegistrertAntallAnsatte=False)):
+        with patch.object(registry, 'fetch', return_value=fixture(harRegistrertAntallAnsatte=False)):
             result, _ = t.research(ORG)
         self.assertNotIn('registered_employees', [c['field'] for c in result['claims']])
 
     def test_true_zero_and_false_are_preserved(self):
-        with patch.object(t, 'fetch', return_value=fixture()):
+        with patch.object(registry, 'fetch', return_value=fixture()):
             result, _ = t.research(ORG)
         values = {c['field']: c['value'] for c in result['claims']}
         self.assertEqual(values['registered_employees'], 0)
@@ -52,7 +53,7 @@ class ResearchTests(unittest.TestCase):
 
     def test_evidence_points_to_original_value(self):
         body = fixture()
-        with patch.object(t, 'fetch', return_value=body):
+        with patch.object(registry, 'fetch', return_value=body):
             result, _ = t.research(ORG)
         for claim in result['claims']:
             self.assertEqual(claim['value'], json.loads(body)[claim['json_pointer'][1:]])
@@ -62,18 +63,18 @@ class ResearchTests(unittest.TestCase):
 
     def test_http_availability_states(self):
         for code, expected in [(404,'not_available'), (403,'blocked'), (429,'blocked'), (500,'failed')]:
-            with self.subTest(code=code), patch.object(t, 'fetch', side_effect=urllib.error.HTTPError(t.BASE+ORG,code,'error',{},None)):
+            with self.subTest(code=code), patch.object(registry, 'fetch', side_effect=urllib.error.HTTPError(t.BASE+ORG,code,'error',{},None)):
                 result, _ = t.research(ORG)
                 self.assertEqual(result['state'], expected)
                 self.assertEqual(result['claims'], [])
 
     def test_bad_json_is_contained(self):
-        with patch.object(t, 'fetch', return_value=b'not-json'):
+        with patch.object(registry, 'fetch', return_value=b'not-json'):
             result, _ = t.research(ORG)
         self.assertEqual(result['state'], 'failed')
 
     def test_validation_failure_does_not_leak_partial_claims(self):
-        with patch.object(t, 'fetch', return_value=fixture(antallAnsatte=-1)):
+        with patch.object(registry, 'fetch', return_value=fixture(antallAnsatte=-1)):
             result, _ = t.research(ORG)
         self.assertEqual(result['state'], 'failed')
         self.assertEqual(result['claims'], [])
@@ -93,7 +94,7 @@ class StorageTests(unittest.TestCase):
         self.temp.cleanup()
 
     def save_fixture(self, **changes):
-        with patch.object(t,'fetch',return_value=fixture(**changes)):
+        with patch.object(registry,'fetch',return_value=fixture(**changes)):
             result, body = t.research(ORG)
         return self.store.save(result, body)
 
@@ -136,7 +137,7 @@ class StorageTests(unittest.TestCase):
 
 class BatchTests(unittest.TestCase):
     def test_every_input_including_duplicate_and_invalid_returns(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(t,'fetch',return_value=fixture()):
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry,'fetch',return_value=fixture()):
             report = t.run_batch([ORG, 'bad', ORG], folder)
             lines = [json.loads(x) for x in (Path(folder)/'profiles.jsonl').read_text().splitlines()]
             self.assertEqual([x['organisation_number'] for x in lines], [ORG,'bad',ORG])
@@ -145,13 +146,13 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(report['states']['failed'], 1)
 
     def test_exhausted_budget_still_returns_all_results(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(t,'fetch') as fetch:
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry,'fetch') as fetch:
             report = t.run_batch([ORG]*3, folder, budget=-1)
         fetch.assert_not_called()
         self.assertEqual(report['states']['failed'], 3)
 
     def test_viewer_escapes_source_text(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(t,'fetch',return_value=fixture(navn='<script>alert(1)</script>')):
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry,'fetch',return_value=fixture(navn='<script>alert(1)</script>')):
             t.run_batch([ORG], folder)
             page = (Path(folder)/'index.html').read_text()
         self.assertNotIn('<script>',page)
@@ -172,7 +173,7 @@ class BatchTests(unittest.TestCase):
             if result['organisation_number'] == 'bad':
                 raise OSError('simulated disk issue')
             return save(store, result, body)
-        with tempfile.TemporaryDirectory() as folder, patch.object(t, 'fetch', return_value=fixture()), patch.object(t.Store, 'save', fail_one):
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry, 'fetch', return_value=fixture()), patch.object(t.Store, 'save', fail_one):
             report = t.run_batch([ORG, 'bad', ORG], folder)
             rows = [json.loads(line) for line in (Path(folder) / 'profiles.jsonl').read_text().splitlines()]
             self.assertEqual(report['output_count'], 3)
