@@ -3,9 +3,10 @@ import socket
 import time
 import unittest
 from unittest.mock import patch, MagicMock
-import traceatlas as t
-import web_research as w
-from test_traceatlas import ORG, fixture
+import traceatlas.core as t
+import traceatlas.registry as registry
+import traceatlas.web as w
+from tests.test_traceatlas import ORG, fixture
 
 HOST = 'example.com'
 URL = 'https://example.com/'
@@ -13,7 +14,7 @@ PAGE = b'<html><body>SYNTHETIC TEST COMPANY Org. nr. 923 609 016 <a href="/conta
 
 
 def result():
-    with patch.object(t, 'fetch', return_value=fixture(hjemmeside=HOST)):
+    with patch.object(registry, 'fetch', return_value=fixture(hjemmeside=HOST)):
         return t.research(ORG)[0]
 
 
@@ -144,9 +145,9 @@ class WebsiteIntegrationTests(unittest.TestCase):
     def test_batch_saves_and_audits_html_and_rejects_tampering(self):
         import tempfile
         from pathlib import Path
-        from verify_evidence import verify
+        from traceatlas.audit import verify
         enrich = w.enrich
-        with tempfile.TemporaryDirectory() as folder, patch.object(t,'fetch',return_value=fixture(hjemmeside=HOST)), patch.object(w,'enrich',side_effect=lambda row,domains,deadline: enrich(row,domains,deadline,FakeSession)):
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry,'fetch',return_value=fixture(hjemmeside=HOST)), patch.object(w,'enrich',side_effect=lambda row,domains,deadline: enrich(row,domains,deadline,FakeSession)):
             report = t.run_batch([ORG],folder,allowed_domains=[HOST])
             self.assertEqual(report['website_pages_verified'],2)
             self.assertTrue(verify(folder)['passed'])
