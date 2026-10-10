@@ -7,7 +7,7 @@ from pathlib import Path
 
 class CliTests(unittest.TestCase):
     def run_cli(self, *arguments):
-        return subprocess.run([sys.executable,'traceatlas.py',*arguments],capture_output=True,text=True)
+        return subprocess.run([sys.executable,'-m','traceatlas',*arguments],capture_output=True,text=True)
 
     def test_nonfinite_budget_or_timeout_is_rejected(self):
         for option in ('--budget-seconds','--timeout'):
