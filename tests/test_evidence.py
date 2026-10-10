@@ -5,13 +5,14 @@ import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-import traceatlas
-from verify_evidence import verify
-from test_traceatlas import ORG, fixture
+import traceatlas.core as traceatlas
+import traceatlas.registry as registry
+from traceatlas.audit import verify
+from tests.test_traceatlas import ORG, fixture
 
 class EvidenceAuditTests(unittest.TestCase):
     def test_intact_export_passes_and_tampered_value_fails(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(traceatlas,'fetch',return_value=fixture()):
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry,'fetch',return_value=fixture()):
             traceatlas.run_batch([ORG], folder)
             self.assertTrue(verify(folder)['passed'])
             path = Path(folder)/'profiles.jsonl'
@@ -21,25 +22,25 @@ class EvidenceAuditTests(unittest.TestCase):
             self.assertFalse(verify(folder)['passed'])
 
     def test_tampered_source_fails_hash_check(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(traceatlas,'fetch',return_value=fixture()):
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry,'fetch',return_value=fixture()):
             traceatlas.run_batch([ORG], folder)
             path = next((Path(folder)/'snapshots').glob('*.json'))
             path.write_text('{}')
             self.assertIn('snapshot hash mismatch', verify(folder)['errors'][0]['error'])
 
     def test_optimized_python_rejects_tampered_claim(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(traceatlas, 'fetch', return_value=fixture()):
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry, 'fetch', return_value=fixture()):
             traceatlas.run_batch([ORG], folder)
             path = Path(folder) / 'profiles.jsonl'
             row = json.loads(path.read_text())
             row['claims'][0]['value'] = 'Fabricated'
             path.write_text(json.dumps(row) + '\n')
-            proc = subprocess.run([sys.executable, '-O', 'verify_evidence.py', folder], capture_output=True, text=True)
+            proc = subprocess.run([sys.executable, '-O', '-m', 'traceatlas.audit', folder], capture_output=True, text=True)
             self.assertEqual(proc.returncode, 1)
             self.assertFalse(json.loads(proc.stdout)['passed'])
 
     def test_empty_export_and_missing_rows_fail(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(traceatlas, 'fetch', return_value=fixture()):
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry, 'fetch', return_value=fixture()):
             traceatlas.run_batch([ORG, ORG], folder)
             path = Path(folder) / 'profiles.jsonl'
             lines = path.read_text().splitlines()
