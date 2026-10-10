@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -26,7 +26,15 @@ jobs:
         run: python -m unittest -v
       - name: Offline demo and optimized evidence audit
         run: |
-          python demo.py
-          python -O verify_evidence.py runs/demo --expected-count 1
+          python -m examples.demo
+          python -O -m traceatlas.audit runs/demo --expected-count 1
       - name: Compile entry points
-        run: python -m py_compile traceatlas.py web_research.py verify_evidence.py demo.py
+        run: python -m compileall -q traceatlas tests examples
+      - name: Install package
+        run: python -m pip install .
+      - name: Installed commands outside checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          traceatlas --help
+          traceatlas-audit --help
+          python -c "import importlib.metadata; assert importlib.metadata.version('traceatlas') == '0.3.0'"
