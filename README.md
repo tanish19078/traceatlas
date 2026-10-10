@@ -15,7 +15,7 @@ keys are required. Website research is disabled by default.
 ```bash
 git clone https://github.com/tanish19078/traceatlas.git
 cd traceatlas
-python demo.py
+python -m examples.demo
 ```
 
 Open `runs/demo/index.html`. The offline demo uses explicitly labelled synthetic
@@ -24,30 +24,51 @@ facts; it is an interface demonstration, not research about a real company.
 For live research, put one organisation number per line in `companies.txt`:
 
 ```bash
-python traceatlas.py --input companies.txt --output runs/live --workers 4 --budget-seconds 300
-python verify_evidence.py runs/live
+python -m traceatlas --input companies.txt --output runs/live --workers 4 --budget-seconds 300
+python -m traceatlas.audit runs/live
 ```
 
 JSONL inputs with `organisation_number` or `organisasjonsnummer` are also accepted.
 Use the same output directory on subsequent runs to inspect supported changes.
 Use a separate directory for independent evaluations; concurrent writers to one
-directory are not supported.
+directory are prevented by an exclusive process lock.
 
 To research a registry-provided website, review its access/reuse terms first,
 then enable its exact hostname (repeat the flag for additional reviewed hosts):
 
 ```bash
-python traceatlas.py --input companies.txt --output runs/web --allow-domain company.example.com --timeout 20
-python verify_evidence.py runs/web
+python -m traceatlas --input companies.txt --output runs/web --allow-domain company.example.com --timeout 20
+python -m traceatlas.audit runs/web
 ```
 
 The hostname above is illustrative. Allowlisting is your explicit declaration
 that access was reviewed; robots rules alone do not grant permission. The
 connector requires the exact organization number and legal name together on
 every accepted page. Multiple labeled organization numbers cause rejection.
-It publishes identity passages, not inferred leadership, jobs or finances.
+It publishes identity passages and attributed JSON-LD job postings. Leadership and financial extraction remain outside the current scope.
 Redirects require a separately reviewed candidate; no redirects are followed.
 Fixture mode never requests external websites.
+
+## Resume interrupted batches
+
+```bash
+python -m traceatlas --input companies.txt --output runs/live --resume
+```
+
+Use the original input, fixtures and allowlist. Resume verifies their fingerprints and archived evidence before reusing completed rows, and retries failed or blocked rows. Reused results retain their original retrieval times; run without `--resume` for a fresh observation. A torn final journal line is discarded; corruption in completed records fails closed.
+
+## Repository layout
+
+| Directory | Purpose |
+| --- | --- |
+| `traceatlas/` | Registry connector, batch runner, storage, website research, audit and explorer |
+| `tests/` | Offline unit, CLI and integration regressions |
+| `examples/` | Synthetic runnable demo |
+| `.github/workflows/` | Python compatibility and evidence checks |
+| `runs/` | Ignored research output; keep snapshots with exports |
+
+Run from the repository root, or install with `python -m pip install .` for the
+`traceatlas` and `traceatlas-audit` commands. Runtime has no third-party dependencies.
 
 ## Results
 
@@ -55,14 +76,15 @@ Fixture mode never requests external websites.
 | --- | --- |
 | `profiles.jsonl` | Company results in input order, with claims and availability states |
 | `snapshots/<sha256>.json` / `.html` | Original registry responses and verified website pages |
-| `completion.jsonl` | Flushed terminal results in completion order; diagnostic checkpoint, not automatic resume |
+| `completion.jsonl` | Flushed terminal results in completion order; restartable checkpoint |
+| `run.json` | Input, configuration and fixture fingerprints for safe resume |
 | `history.sqlite3` | Observations and latest supported profiles |
 | `report.json` | Run counts, duration and declared limitations |
 | `index.html` | Evidence explorer with sources and refresh changes |
 
 Each claim carries a source hash, retrieval timestamp, extraction method and
 JSON pointer or exact visible-text span to the supporting value. Reporting periods remain unset when the
-source provides none. Missing employee counts are not replaced with zero.
+source provides none. Structured postings retain the original JSON-LD record, block index and JSON pointer. Employer names must match the legal entity; conflicting tax IDs or duplicate identifiers are rejected. Future and expired postings are skipped as of retrieval. An absent expiry is unknown, and no open-job count is inferred. Missing employee counts are not replaced with zero.
 Unsuccessful refreshes expose previous evidence as `last_known`. A registry-only
 refresh also retains earlier website evidence as historical, not current.
 
@@ -74,16 +96,16 @@ ambiguous results are explicit.
 
 ```bash
 python -m unittest -v
-python demo.py
-python verify_evidence.py runs/demo
+python -m examples.demo
+python -m traceatlas.audit runs/demo
 ```
 
-The current suite contains 47 regression tests covering identity mismatches,
+The current suite contains 76 regression tests covering identity mismatches,
 missing values, source integrity, partial refreshes, batch completion, output
 escaping, private-network targets, DNS pinning, robots rules and website evidence.
 The auditor uses explicit validation and also works under `python -O`. Empty and
 incomplete exports fail verification; use `--expected-count` for an independent
-expected row count. The auditor checks saved claims against source snapshots; it does not
+expected row count, or `--input companies.txt` to check exact input identities and order. Current and historical claims are checked. The auditor checks saved claims against source snapshots; it does not
 independently establish source truth or external recall.
 
 GitHub Actions runs the regression suite, offline demo, optimized audit and
@@ -107,12 +129,11 @@ This check is not an official competition score. The input-file SHA-256 was
 ## Current scope
 
 This release supports official registry facts and opt-in verification of
-registry website candidates. Search discovery, external leadership/jobs/news/
+registry website candidates. Search discovery, external leadership/news/
 financial extraction and adaptive agent planning remain incomplete. Unreviewed
 or unverifiable domains stay unverified. There is no official qualification result.
 
-The organizer's exact input/output adapter, hard execution supervisor, automatic
-resume and evaluation of external recall remain to be completed. The current
+The organizer's exact input/output adapter, hard execution supervisor and evaluation of external recall remain to be completed. The current
 budget is a soft deadline; DNS/network/thread cleanup may exceed it. Individual
 worker or record-storage errors produce failed results while other inputs
 continue; failure of the output directory/journal can still interrupt the run.

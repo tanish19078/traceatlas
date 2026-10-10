@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "traceatlas"
+version = "0.3.0"
+description = "Evidence-preserving company research"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+traceatlas = "traceatlas.cli:main"
+traceatlas-audit = "traceatlas.audit:main"
+
+[tool.setuptools.packages.find]
+include = ["traceatlas*"]
+exclude = ["tests*", "examples*"]
