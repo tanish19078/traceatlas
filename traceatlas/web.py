@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import http.client
 import ipaddress
+import json
 import re
 import socket
 import ssl
@@ -107,10 +108,13 @@ class Document(HTMLParser):
     def __init__(self, body):
         super().__init__(convert_charrefs=True)
         self.parts, self.links, self.hidden = [], [], 0
+        self.json_ld, self.ld_buffer = [], None
         self.feed(body.decode('utf-8', errors='replace'))
         self.text = ' '.join(' '.join(self.parts).split())
 
     def handle_starttag(self, tag, attrs):
+        if tag == 'script' and not self.hidden and dict(attrs).get('type', '').casefold() == 'application/ld+json' and len(self.json_ld) < 100:
+            self.ld_buffer = []
         if tag in ('script', 'style', 'noscript', 'template'):
             self.hidden += 1
         if tag == 'a' and not self.hidden:
@@ -119,10 +123,18 @@ class Document(HTMLParser):
                 self.links.append(href)
 
     def handle_endtag(self, tag):
+        if tag == 'script' and self.ld_buffer is not None:
+            try:
+                self.json_ld.append(json.loads(''.join(self.ld_buffer), parse_constant=lambda value: (_ for _ in ()).throw(ValueError('nonfinite_json'))))
+            except (ValueError, RecursionError):
+                self.json_ld.append(None)
+            self.ld_buffer = None
         if tag in ('script', 'style', 'noscript', 'template'):
             self.hidden = max(0, self.hidden - 1)
 
     def handle_data(self, data):
+        if self.ld_buffer is not None:
+            self.ld_buffer.append(data)
         if not self.hidden:
             self.parts.append(data)
 
@@ -174,7 +186,10 @@ class SiteSession:
             raise AccessError('request_budget_exhausted')
         # Serialize all requests to one host across batch workers. The strictest
         # observed robots delay remains in effect for the process lifetime.
-        with self.gate[0]:
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0 or not self.gate[0].acquire(timeout=remaining):
+            raise AccessError('deadline_exhausted')
+        try:
             self.gate[2] = max(self.gate[2], self.delay)
             wait = max(0, self.gate[2] - (time.monotonic() - self.gate[1]))
             if time.monotonic() + wait >= self.deadline:
@@ -188,6 +203,8 @@ class SiteSession:
             except Exception as exc:
                 exc.requests = self.requests
                 raise
+        finally:
+            self.gate[0].release()
 
     def page(self, url):
         url = normalize_url(url)
@@ -259,12 +276,16 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
             evidence = {'id': key, 'source_url': page_url, 'retrieved_at': datetime.now(timezone.utc).isoformat(),
                         'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
                         'source_class': 'verified_company_website', 'extractor_version': 'visible_text_v1',
-                        'identity_span': page_proof, 'synthetic': False,
+                        'identity_span': page_proof, 'legal_name': legal_name, 'organisation_number': number, 'synthetic': False,
                         'access_policy': 'reviewed_domain_allowlist_and_robots'}
             result['evidence'].append(evidence)
+            from .jobs import extract_jobs
+            jobs = extract_jobs(page_doc, number, legal_name, page_url, key, evidence['retrieved_at'])
+            result['claims'].extend(jobs)
+            if jobs:
+                result['availability']['jobs'] = {'state': 'available'}
             blobs.append((page_body, '.html'))
-            # Publish a directly inspectable identity passage, not inferred job or
-            # financial values. Specialized structured extractors come later.
+            # Identity passages and structured postings retain separate locators.
             start, end = max(0, page_proof[0]-150), min(len(page_doc.text), page_proof[1]+150)
             value = page_doc.text[start:end]
             field = 'website_identity' if page_url == url else 'company_page'
