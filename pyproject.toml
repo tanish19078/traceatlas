@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "traceatlas"
-version = "0.3.0"
+version = "0.4.0"
 description = "Evidence-preserving company research"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -49,6 +49,38 @@ It publishes identity passages and attributed JSON-LD job postings. Leadership a
 Redirects require a separately reviewed candidate; no redirects are followed.
 Fixture mode never requests external websites.
 
+## Legal news and filings
+
+Pass a reviewed source manifest plus exact host allowlists:
+
+```bash
+python -m traceatlas --input companies.txt --output runs/legal --legal-sources sources.json --allow-domain news.example.com --allow-domain filings.example.com
+```
+
+`sources.json` is a JSON object keyed by organisation number:
+
+```json
+{"923609016":[{"url":"https://news.example.com/report","kind":"news","access_reviewed":true}]}
+```
+
+The URL is illustrative; use permitted public sources you have reviewed. `kind`
+is `news` or `filing`; at most five URLs per company are accepted. URLs are
+candidates, never facts until fetched and checked. This release does not search
+for legal sources automatically or parse PDFs. HTML must contain the exact legal
+name and labelled organisation number, a nearby legal-proceedings mention and
+an unambiguous publication date. The extractor saves the original HTML, exact
+text span, reported case reference when present, publication/retrieval dates and
+source kind. Conflicting entity IDs and missing/future dates cause abstention.
+
+The explorer labels every item **source report only**. A news allegation is not
+a court finding; outcomes and liability are not inferred. A filing is a filing
+report, not proof that a court accepted its assertions. No result ever means
+“no cases.” Source failures stay visible; earlier reports survive refresh as
+historical evidence. Resume fingerprints the source manifest as well as inputs.
+The connector uses the same DNS/TLS, robots, response-size and shared host-rate
+guards as website research. Legal retrieval has been verified with offline
+HTML fixtures; successful live retrieval remains unvalidated in this environment.
+
 ## Resume interrupted batches
 
 ```bash
@@ -100,7 +132,7 @@ python -m examples.demo
 python -m traceatlas.audit runs/demo
 ```
 
-The current suite contains 76 regression tests covering identity mismatches,
+The current suite contains 87 regression tests covering identity mismatches,
 missing values, source integrity, partial refreshes, batch completion, output
 escaping, private-network targets, DNS pinning, robots rules and website evidence.
 The auditor uses explicit validation and also works under `python -O`. Empty and
@@ -126,14 +158,18 @@ from the first page of the registry API, not a random or contest-universe sample
 This check is not an official competition score. The input-file SHA-256 was
 `4e2acffa8bd2308ef7ed21e1924fdcb2162342aa1babd7317e1ffdb52cb47b02`.
 
+## Submission
+
+See [submission/README.md](submission/README.md) for the current requirement check, reproducible evaluator command, source/API declaration and fresh 100-company smoke report. This is a baseline entry; external recall and an official score have not been measured.
+
 ## Current scope
 
 This release supports official registry facts and opt-in verification of
-registry website candidates. Search discovery, external leadership/news/
+registry website candidates, plus reviewed legal news/filing URLs. Search discovery, general leadership/news/
 financial extraction and adaptive agent planning remain incomplete. Unreviewed
 or unverifiable domains stay unverified. There is no official qualification result.
 
-The organizer's exact input/output adapter, hard execution supervisor and evaluation of external recall remain to be completed. The current
+The organizer has not published a more specific machine schema beyond the result envelope. TraceAtlas reads supplied text/JSONL batches; evaluator-specific integration, a hard execution supervisor and evaluation of external recall remain to be completed. The current
 budget is a soft deadline; DNS/network/thread cleanup may exceed it. Individual
 worker or record-storage errors produce failed results while other inputs
 continue; failure of the output directory/journal can still interrupt the run.
