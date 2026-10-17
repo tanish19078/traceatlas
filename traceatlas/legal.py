@@ -28,7 +28,7 @@ def load_sources(path):
             raise ValueError('invalid_legal_source_company_or_limit')
         seen, accepted = set(), []
         for entry in entries:
-            if not isinstance(entry, dict) or entry.get('kind') not in KINDS or entry.get('access_reviewed') is not True:
+            if not isinstance(entry, dict) or not isinstance(entry.get('kind'), str) or entry.get('kind') not in KINDS or entry.get('access_reviewed') is not True:
                 raise ValueError('legal_source_requires_kind_and_access_review')
             url = normalize_url(entry.get('url'))
             if url in seen:
@@ -61,7 +61,7 @@ def publication_date(document, retrieved_at):
 def extract_report(document, number, legal_name, url, evidence_id, retrieved_at, kind):
     proof = verify_identity(document, number, legal_name)
     published = publication_date(document, retrieved_at)
-    if kind not in KINDS or proof is None or published is None:
+    if not isinstance(kind, str) or kind not in KINDS or proof is None or published is None:
         return None
     # A distant footer identity cannot attribute an unrelated litigation story.
     start, end = max(0, proof[0]-450), min(len(document.text), proof[1]+450)

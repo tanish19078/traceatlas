@@ -115,9 +115,9 @@ class Document(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         attributes = dict(attrs)
-        if tag == 'meta' and not self.hidden and attributes.get('property', attributes.get('name', '')).casefold() in ('article:published_time', 'datepublished'):
+        if tag == 'meta' and not self.hidden and (attributes.get('property') or attributes.get('name') or '').casefold() in ('article:published_time', 'datepublished'):
             self.publication_dates.append(attributes.get('content'))
-        if tag == 'script' and not self.hidden and dict(attrs).get('type', '').casefold() == 'application/ld+json' and len(self.json_ld) < 100:
+        if tag == 'script' and not self.hidden and (attributes.get('type') or '').casefold() == 'application/ld+json' and len(self.json_ld) < 100:
             self.ld_buffer = []
         if tag in ('script', 'style', 'noscript', 'template'):
             self.hidden += 1
