@@ -37,4 +37,4 @@ jobs:
         run: |
           traceatlas --help
           traceatlas-audit --help
-          python -c "import importlib.metadata; assert importlib.metadata.version('traceatlas') == '0.3.0'"
+          python -c "import importlib.metadata; assert importlib.metadata.version('traceatlas') == '0.4.0'"
