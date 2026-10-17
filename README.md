@@ -132,7 +132,7 @@ python -m examples.demo
 python -m traceatlas.audit runs/demo
 ```
 
-The current suite contains 87 regression tests covering identity mismatches,
+The current suite contains 89 regression tests covering identity mismatches,
 missing values, source integrity, partial refreshes, batch completion, output
 escaping, private-network targets, DNS pinning, robots rules and website evidence.
 The auditor uses explicit validation and also works under `python -O`. Empty and
