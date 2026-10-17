@@ -1,16 +1,40 @@
 # TraceAtlas
 
-**Company intelligence, backed by evidence.**
+**Company research you can trace back to the source.**
 
-TraceAtlas researches Norwegian companies by organisation number and preserves
-the source behind every published fact. The current release retrieves official
-registry records, optionally verifies reviewed company websites, saves source
-snapshots, tracks changes and generates an HTML evidence explorer.
+TraceAtlas turns a Norwegian organisation number into a company profile with
+inspectable evidence. It collects official registry facts, checks reviewed
+company websites, tracks changes over time, and builds a standalone HTML
+explorer for reading the results.
 
-## Quick start
+The idea is simple: a useful company profile should explain where its facts
+came from, when they were checked, and what is still unknown.
 
-Python 3.11+ with SQLite and HTTPS support. No third-party dependencies or API
-keys are required. Website research is disabled by default.
+## What it does
+
+- **Registry research:** legal identity, registered address, industry, business
+  activity, registered employee counts and status, where the registry reports them.
+- **Website verification:** checks the exact legal name and labelled organisation
+  number before accepting a reviewed company page.
+- **Structured jobs:** extracts attributed JSON-LD postings, checks employer
+  identity and dates, and preserves the original record.
+- **Legal reporting:** fetches reviewed news or HTML filing URLs and preserves
+  dated passages about legal proceedings, including case references when reported.
+- **Change history:** shows supported changes and keeps earlier evidence when a
+  refresh fails or a source is no longer checked.
+- **Recoverable batches:** resumes interrupted work after validating the inputs,
+  configuration and saved evidence.
+- **Evidence auditing:** checks published values against archived source snapshots.
+
+Every claim has a source reference and retrieval date, plus a JSON pointer or
+text span you can inspect. Missing information stays missing; an unavailable
+employee count never becomes zero. Legal reports remain attributed reports,
+with no inferred liability or court outcome.
+
+## Try it locally
+
+Requires Python 3.11+ with SQLite and HTTPS support. There are no third-party
+runtime dependencies or required API keys.
 
 ```bash
 git clone https://github.com/tanish19078/traceatlas.git
@@ -18,188 +42,127 @@ cd traceatlas
 python -m examples.demo
 ```
 
-Open `runs/demo/index.html`. The offline demo uses explicitly labelled synthetic
-facts; it is an interface demonstration, not research about a real company.
+Open `runs/demo/index.html` to explore the interface. The demo runs offline and
+uses clearly labelled synthetic facts.
 
-For live research, put one organisation number per line in `companies.txt`:
+For live registry research, create `companies.txt` with one organisation number
+per line, then run:
 
 ```bash
 python -m traceatlas --input companies.txt --output runs/live --workers 4 --budget-seconds 300
-python -m traceatlas.audit runs/live
+python -m traceatlas.audit runs/live --input companies.txt
 ```
 
-JSONL inputs with `organisation_number` or `organisasjonsnummer` are also accepted.
-Use the same output directory on subsequent runs to inspect supported changes.
-Use a separate directory for independent evaluations; concurrent writers to one
-directory are prevented by an exclusive process lock.
+JSONL objects with an `organisation_number` or `organisasjonsnummer` field are
+also accepted. Open `runs/live/index.html` to inspect the profiles and evidence.
 
-To research a registry-provided website, review its access/reuse terms first,
-then enable its exact hostname (repeat the flag for additional reviewed hosts):
+You can also install the package with `python -m pip install .` to use the
+`traceatlas` and `traceatlas-audit` commands.
+
+## Add reviewed sources
+
+Website and legal-source requests are opt-in. Review a source's access and reuse
+terms before enabling its exact hostname; robots rules alone do not grant reuse
+permission. The example domains below are placeholders.
+
+To check a website supplied by the registry:
 
 ```bash
 python -m traceatlas --input companies.txt --output runs/web --allow-domain company.example.com --timeout 20
-python -m traceatlas.audit runs/web
 ```
 
-The hostname above is illustrative. Allowlisting is your explicit declaration
-that access was reviewed; robots rules alone do not grant permission. The
-connector requires the exact organization number and legal name together on
-every accepted page. Multiple labeled organization numbers cause rejection.
-It publishes identity passages and attributed JSON-LD job postings. Leadership and financial extraction remain outside the current scope.
-Redirects require a separately reviewed candidate; no redirects are followed.
-Fixture mode never requests external websites.
+Accepted pages must show the exact legal name and labelled organisation number.
+Pages with multiple labelled company numbers are rejected. Structured job
+postings must also match the employer; expired or future postings are skipped
+as of retrieval. An absent expiry stays unknown.
 
-## Legal news and filings
-
-Pass a reviewed source manifest plus exact host allowlists:
-
-```bash
-python -m traceatlas --input companies.txt --output runs/legal --legal-sources sources.json --allow-domain news.example.com --allow-domain filings.example.com
-```
-
-`sources.json` is a JSON object keyed by organisation number:
+For legal news and filings, create a `sources.json` map:
 
 ```json
-{"923609016":[{"url":"https://news.example.com/report","kind":"news","access_reviewed":true}]}
+{
+  "923609016": [
+    {
+      "url": "https://news.example.com/report",
+      "kind": "news",
+      "access_reviewed": true
+    }
+  ]
+}
 ```
 
-The URL is illustrative; use permitted public sources you have reviewed. `kind`
-is `news` or `filing`; at most five URLs per company are accepted. URLs are
-candidates, never facts until fetched and checked. This release does not search
-for legal sources automatically or parse PDFs. HTML must contain the exact legal
-name and labelled organisation number, a nearby legal-proceedings mention and
-an unambiguous publication date. The extractor saves the original HTML, exact
-text span, reported case reference when present, publication/retrieval dates and
-source kind. Conflicting entity IDs and missing/future dates cause abstention.
+```bash
+python -m traceatlas --input companies.txt --output runs/legal --legal-sources sources.json --allow-domain news.example.com
+```
 
-The explorer labels every item **source report only**. A news allegation is not
-a court finding; outcomes and liability are not inferred. A filing is a filing
-report, not proof that a court accepted its assertions. No result ever means
-“no cases.” Source failures stay visible; earlier reports survive refresh as
-historical evidence. Resume fingerprints the source manifest as well as inputs.
-The connector uses the same DNS/TLS, robots, response-size and shared host-rate
-guards as website research. Legal retrieval has been verified with offline
-HTML fixtures; successful live retrieval remains unvalidated in this environment.
+Use `news` or `filing` for `kind`, with at most five URLs per company. The
+extractor requires company identity, a nearby mention of legal proceedings and
+an unambiguous publication date. It saves the HTML, supporting passage, dates
+and source kind. The explorer labels these items **source report only**. An empty
+or failed lookup does not establish that a company has no legal cases.
 
-## Resume interrupted batches
+All external HTML requests use public HTTPS hostnames, checked DNS addresses,
+TLS hostname verification, robots rules, response-size limits and shared
+per-host rate controls. Redirects are not followed. Fixture mode stays offline.
+
+## Refresh or resume
+
+Run again with the same output directory for a fresh observation and change
+history. To recover interrupted work instead:
 
 ```bash
 python -m traceatlas --input companies.txt --output runs/live --resume
 ```
 
-Use the original input, fixtures and allowlist. Resume verifies their fingerprints and archived evidence before reusing completed rows, and retries failed or blocked rows. Reused results retain their original retrieval times; run without `--resume` for a fresh observation. A torn final journal line is discarded; corruption in completed records fails closed.
+Keep the original input, fixtures, source map and hostname allowlist. Resume
+checks their fingerprints and archived evidence, reuses completed results with
+their original timestamps, and retries failed or blocked rows. An exclusive lock
+prevents concurrent writers from using the same output directory.
 
-## Repository layout
+## Output
 
-| Directory | Purpose |
+| File | Purpose |
 | --- | --- |
-| `traceatlas/` | Registry connector, batch runner, storage, website research, audit and explorer |
-| `tests/` | Offline unit, CLI and integration regressions |
-| `examples/` | Synthetic runnable demo |
-| `.github/workflows/` | Python compatibility and evidence checks |
-| `runs/` | Ignored research output; keep snapshots with exports |
-
-Run from the repository root, or install with `python -m pip install .` for the
-`traceatlas` and `traceatlas-audit` commands. Runtime has no third-party dependencies.
-
-## Results
-
-| File | Contents |
-| --- | --- |
-| `profiles.jsonl` | Company results in input order, with claims and availability states |
-| `snapshots/<sha256>.json` / `.html` | Original registry responses and verified website pages |
-| `completion.jsonl` | Flushed terminal results in completion order; restartable checkpoint |
-| `run.json` | Input, configuration and fixture fingerprints for safe resume |
+| `index.html` | Standalone evidence explorer, availability states and refresh changes |
+| `profiles.jsonl` | Company profiles in input order |
+| `snapshots/` | Original registry JSON and accepted HTML, named by content hash |
 | `history.sqlite3` | Observations and latest supported profiles |
-| `report.json` | Run counts, duration and declared limitations |
-| `index.html` | Evidence explorer with sources and refresh changes |
+| `completion.jsonl` | Flushed results for recovery |
+| `run.json` | Input and configuration fingerprints |
+| `report.json` | Counts, duration and run limitations |
 
-Each claim carries a source hash, retrieval timestamp, extraction method and
-JSON pointer or exact visible-text span to the supporting value. Reporting periods remain unset when the
-source provides none. Structured postings retain the original JSON-LD record, block index and JSON pointer. Employer names must match the legal entity; conflicting tax IDs or duplicate identifiers are rejected. Future and expired postings are skipped as of retrieval. An absent expiry is unknown, and no open-job count is inferred. Missing employee counts are not replaced with zero.
-Unsuccessful refreshes expose previous evidence as `last_known`. A registry-only
-refresh also retains earlier website evidence as historical, not current.
+Preserve the complete output directory when archiving a run. Previous supported
+facts appear as `last_known` when they cannot be treated as current. Source data
+retains its original attribution and reuse conditions.
 
-Exit code `0` means no input ended in `failed`, not that all information was
-available. Exit code `2` means at least one input failed. Missing, blocked and
-ambiguous results are explicit.
+## Development
 
-## Verification
+Application code lives in `traceatlas/`, regressions in `tests/`, and the offline
+demo in `examples/`. Generated output under `runs/` is excluded from Git.
 
 ```bash
 python -m unittest -v
 python -m examples.demo
-python -m traceatlas.audit runs/demo
+python -O -m traceatlas.audit runs/demo --expected-count 1
 ```
 
-The current suite contains 89 regression tests covering identity mismatches,
-missing values, source integrity, partial refreshes, batch completion, output
-escaping, private-network targets, DNS pinning, robots rules and website evidence.
-The auditor uses explicit validation and also works under `python -O`. Empty and
-incomplete exports fail verification; use `--expected-count` for an independent
-expected row count, or `--input companies.txt` to check exact input identities and order. Current and historical claims are checked. The auditor checks saved claims against source snapshots; it does not
-independently establish source truth or external recall.
+The 89-test suite covers company matching, source integrity, legal-report dates,
+refresh history, recovery, output escaping and network safeguards. CI runs on
+Python 3.11, 3.12 and 3.13 and checks installation outside the checkout.
 
-GitHub Actions runs the regression suite, offline demo, optimized audit and
-compilation checks on Python 3.11, 3.12 and 3.13 for pushes and pull requests.
-Action dependencies are pinned to verified release commit hashes; the workflow
-uses read-only repository access and does not retain checkout credentials.
+A live registry check on 17 October 2026 returned 100 profiles with 809 audited
+claims in 101.6 seconds using eight workers. A separate offline recovery check
+processed 1,000 rows and audited 2,700 claims. These checks establish execution
+and stored support, not the completeness of information found online.
 
-A separate offline scale check processed 1,000 input rows (900 duplicate valid
-fixture inputs and 100 deliberately invalid inputs), retained input ordering,
-and audited all 2,700 current claims successfully. This checks completion and
-storage behavior; it does not measure live throughput, entity diversity or
-external recall.
+## Current limits
 
-A live operational check on 8 October 2026 returned 100 results from 100 public
-registry inputs, with 803 claims verified against their saved responses, zero
-failed lookups and a runtime of 149.473 seconds with four workers. Inputs came
-from the first page of the registry API, not a random or contest-universe sample.
-This check is not an official competition score. The input-file SHA-256 was
-`4e2acffa8bd2308ef7ed21e1924fdcb2162342aa1babd7317e1ffdb52cb47b02`.
+Automatic source discovery, broad leadership and financial extraction, and PDF
+parsing are not implemented. Legal research uses supplied reviewed URLs. Website
+and legal-source integration are tested with offline HTML fixtures; successful
+live external retrieval has not yet been validated in this environment.
 
-## Submission
+The time budget is a soft deadline: DNS, network and thread cleanup can exceed
+it. The auditor verifies support in saved snapshots; it cannot independently
+establish that a source is truthful or that every relevant fact was found.
 
-See [submission/README.md](submission/README.md) for the current requirement check, reproducible evaluator command, source/API declaration and fresh 100-company smoke report. This is a baseline entry; external recall and an official score have not been measured.
-
-## Current scope
-
-This release supports official registry facts and opt-in verification of
-registry website candidates, plus reviewed legal news/filing URLs. Search discovery, general leadership/news/
-financial extraction and adaptive agent planning remain incomplete. Unreviewed
-or unverifiable domains stay unverified. There is no official qualification result.
-
-The organizer has not published a more specific machine schema beyond the result envelope. TraceAtlas reads supplied text/JSONL batches; evaluator-specific integration, a hard execution supervisor and evaluation of external recall remain to be completed. The current
-budget is a soft deadline; DNS/network/thread cleanup may exceed it. Individual
-worker or record-storage errors produce failed results while other inputs
-continue; failure of the output directory/journal can still interrupt the run.
-
-Website retrieval and its integration are tested offline with synthetic pages.
-A live website probe in this development environment failed at direct DNS
-resolution, so successful live website retrieval has not yet been validated.
-The earlier 100-company live check above covers the registry connector only.
-
-## Sources and access
-
-Registry retrieval uses the fixed HTTPS Brønnøysundregistrene entity endpoint,
-1–8 workers and a 2 MB response limit. Opt-in website retrieval accepts only
-HTTPS public hostnames on the reviewed allowlist, rejects private or mixed DNS
-answers and connects to the checked address with TLS hostname verification.
-It honors robots rules, serializes requests per host across workers, enforces
-at least one second between requests and honors longer observed crawl delays.
-Each site session allows five requests including robots, at most three verified
-pages and 1 MB per response. Redirects are never followed. No paid APIs or
-models are used.
-
-Company URLs are candidates until verified against the exact legal entity.
-Search snippets cannot support published facts. Future connectors must use
-permitted access, preserve evidence and keep parent/subsidiary facts distinct.
-
-Runtime data and databases are excluded from Git. Preserve the complete output
-directory when archiving evidence; do not publish credentials or private data.
-Source data retains its original attribution and reuse conditions.
-
-- [Registry API documentation](https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/index.html)
-- [Signalpost challenge](https://builderr.ai/challenges/signalpost)
-- [Evaluation contract](https://builderr.ai/docs/signalpost-evaluation-harness.md)
-- [Permitted source policy](https://builderr.ai/starter-briefs/signalpost-sources.md)
+Registry facts come from [Brønnøysundregistrene's public entity API](https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/index.html).
