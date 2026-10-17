@@ -27,23 +27,25 @@ def read_inputs(path):
     return numbers
 
 
-def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=12, allowed_domains=None, resume=False):
+def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=12, allowed_domains=None, resume=False, legal_sources=None):
     numbers = list(numbers)
     if not numbers or any(not isinstance(number, str) for number in numbers):
         raise ValueError('inputs must be a nonempty sequence of strings')
     if type(workers) is not int or not 1 <= workers <= 8 or not math.isfinite(budget) or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError('invalid batch configuration')
+    if legal_sources and fixture_dir:
+        raise ValueError('fixture mode never requests legal sources')
     started = time.monotonic()
     root = Path(output)
     root.mkdir(parents=True, exist_ok=True)
     from .checkpoint import output_lock
     with output_lock(root):
-        return _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started)
+        return _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources)
 
 
-def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started):
+def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources):
     from .checkpoint import prepare
-    recovered = prepare(root, numbers, fixture_dir, allowed_domains, resume)
+    recovered = prepare(root, numbers, fixture_dir, allowed_domains, resume, legal_sources)
     store = Store(root)
     def task(number):
         remaining = budget - (time.monotonic() - started)
@@ -54,6 +56,10 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
             from .web import enrich
             pages = enrich(result, allowed_domains, min(started + budget, time.monotonic() + timeout))
             body = [(body, '.json')] + pages
+        if legal_sources and result['state'] == 'available':
+            from .legal import enrich_legal
+            pages = enrich_legal(result, legal_sources.get(number, []), allowed_domains or [], min(started + budget, time.monotonic() + timeout))
+            body = (body if isinstance(body, list) else [(body, '.json')]) + pages
         return result, body
     results = [recovered.get(index) for index in range(len(numbers))]
     try:
@@ -87,11 +93,13 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
                   'states': counts, 'duration_seconds': round(time.monotonic()-started, 3),
                   'claim_count': sum(len(r['claims']) for r in results),
                   'website_requests': sum(r.get('website_research', {}).get('requests', 0) for r in results),
+                  'legal_requests': sum(r.get('legal_research', {}).get('requests', 0) for r in results),
+                  'legal_reports': sum(r.get('legal_research', {}).get('reports_found', 0) for r in results),
                   'website_pages_verified': sum(r.get('website_research', {}).get('pages_verified', 0) for r in results),
                   'external_coverage_measured': False, 'official_score': None,
                   'external_api_cost_usd': 0, 'models': [],
-                  'limitations': ['Website research is opt-in and limited to reviewed registry candidate domains.',
-                                  'Leadership, financial and news extraction not implemented; jobs require attributed JSON-LD.',
+                  'limitations': ['Website and legal-source research is opt-in on reviewed allowlisted domains.',
+                                  'Leadership, financial and general news extraction not implemented; legal sources are reviewed URLs and jobs require attributed JSON-LD.',
                                   'Soft deadline; network and thread cleanup may exceed the budget.',
                                   'Not an official evaluation or qualification result.']}
         atomic_write(root / 'report.json', json.dumps(report, indent=2) + '\n')

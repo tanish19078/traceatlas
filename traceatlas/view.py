@@ -13,7 +13,7 @@ def render(results, target):
             e = refs[claim['evidence_id']]
             url = e['source_url']
             safe_url = url.startswith(BASE)
-            if e['source_class'] == 'verified_company_website':
+            if e['source_class'] in ('verified_company_website', 'legal_news_report', 'legal_filing_report'):
                 from .web import normalize_url
                 try:
                     safe_url = normalize_url(url) == url
@@ -27,6 +27,9 @@ def render(results, target):
             if claim['field'] == 'jobs' and isinstance(claim['value'], dict):
                 posting = claim['value']
                 display_value = '<strong>' + esc(posting.get('title', 'Job posting')) + '</strong><p>Posted ' + esc(posting.get('datePosted', 'unknown')) + '</p><p>Expiry: ' + esc(posting.get('validThrough', 'not reported')) + '</p><details><summary>Original structured record</summary><pre>' + esc(json.dumps(posting, ensure_ascii=False, indent=2)) + '</pre></details>'
+            if claim['field'] == 'legal_cases':
+                report = claim['value']
+                display_value = '<strong>Source report · ' + esc(report['source_kind']) + '</strong><p>Published ' + esc(report['published_at']) + ' · Case reference: ' + esc(report['case_reference'] or 'not reported') + '</p><blockquote>' + esc(report['reported_text']) + '</blockquote><p>Reported by the linked source. Liability and court outcome are not inferred.</p>'
             rows.append('<tr><th>' + esc(claim['field'].replace('_', ' ')) + '</th><td>' +
                         display_value + '</td><td><details><summary>Evidence</summary>' +
                         source + '<p>Retrieved ' + esc(e['retrieved_at']) + '</p><p>' +

@@ -109,10 +109,14 @@ class Document(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.parts, self.links, self.hidden = [], [], 0
         self.json_ld, self.ld_buffer = [], None
+        self.publication_dates = []
         self.feed(body.decode('utf-8', errors='replace'))
         self.text = ' '.join(' '.join(self.parts).split())
 
     def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == 'meta' and not self.hidden and attributes.get('property', attributes.get('name', '')).casefold() in ('article:published_time', 'datepublished'):
+            self.publication_dates.append(attributes.get('content'))
         if tag == 'script' and not self.hidden and dict(attrs).get('type', '').casefold() == 'application/ld+json' and len(self.json_ld) < 100:
             self.ld_buffer = []
         if tag in ('script', 'style', 'noscript', 'template'):

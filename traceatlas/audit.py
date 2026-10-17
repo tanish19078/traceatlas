@@ -36,7 +36,7 @@ def validate_result(result, root, historical=False):
         require(isinstance(key, str) and len(key) == 64 and all(c in '0123456789abcdef' for c in key), 'invalid snapshot hash')
         require(item['id'] == key, 'evidence id/hash mismatch')
         source_class = item['source_class']
-        require(source_class in ('official_registry', 'verified_company_website'), 'unknown source class')
+        require(source_class in ('official_registry', 'verified_company_website', 'legal_news_report', 'legal_filing_report'), 'unknown source class')
         suffix = '.json' if source_class == 'official_registry' else '.html'
         require(item['snapshot_path'] == 'snapshots/' + key + suffix, 'wrong snapshot path')
         path = root / 'snapshots' / (key + suffix)
@@ -70,7 +70,13 @@ def validate_result(result, root, historical=False):
             legal_name = item.get('legal_name', result['legal_identity'].get('name', '')) if historical else result['legal_identity']['name']
             proof = verify_identity(document, result['organisation_number'], legal_name)
             require(proof is not None and proof == item['identity_span'], 'website entity proof missing')
-            if claim['extraction_method'] == 'json_ld_job_v1':
+            if source_class in ('legal_news_report', 'legal_filing_report'):
+                from .legal import extract_report
+                kind = 'news' if source_class == 'legal_news_report' else 'filing'
+                supported = extract_report(document, result['organisation_number'], legal_name, item['source_url'], key, item['retrieved_at'], kind)
+                require(claim == supported and item['extractor_version'] == 'legal_report_v1', 'unsupported legal source report')
+                value = claim['value']
+            elif claim['extraction_method'] == 'json_ld_job_v1':
                 from .jobs import extract_jobs
                 supported = extract_jobs(document, result['organisation_number'], legal_name, item['source_url'], key, item['retrieved_at'])
                 require(claim in supported, 'unsupported structured job posting')

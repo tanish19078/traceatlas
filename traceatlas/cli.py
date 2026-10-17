@@ -12,6 +12,7 @@ def main():
     parser.add_argument('--budget-seconds', type=float, default=300)
     parser.add_argument('--timeout', type=float, default=12)
     parser.add_argument('--allow-domain', action='append', default=[], help='Reviewed public website hostname; enables opt-in website research (repeatable)')
+    parser.add_argument('--legal-sources', help='Reviewed JSON map of company numbers to news/filing URLs; also requires --allow-domain')
     parser.add_argument('--resume', action='store_true', help='Reuse evidence-checked terminal results from the same batch; retry failed/blocked inputs')
     args = parser.parse_args()
     if not 1 <= args.workers <= 8 or any(not math.isfinite(value) or value <= 0 for value in (args.budget_seconds, args.timeout)):
@@ -26,7 +27,7 @@ def main():
             domains.append(urlsplit(normalize_url(domain)).hostname)
         except ValueError:
             parser.error('allow-domain must be a public HTTPS hostname')
-    if args.fixtures and domains:
+    if args.fixtures and (domains or args.legal_sources):
         parser.error('fixture mode never makes website requests')
     try:
         numbers = read_inputs(args.input)
@@ -35,8 +36,12 @@ def main():
     if not numbers:
         parser.error('input file must contain at least one organization number')
     try:
+        from .legal import load_sources
+        legal_sources = load_sources(args.legal_sources) if args.legal_sources else None
+        if legal_sources and not domains:
+            parser.error('legal sources require reviewed --allow-domain hosts')
         report = run_batch(numbers, args.output, args.fixtures,
-                           args.workers, args.budget_seconds, args.timeout, domains, args.resume)
+                           args.workers, args.budget_seconds, args.timeout, domains, args.resume, legal_sources)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     print(json.dumps(report, indent=2))

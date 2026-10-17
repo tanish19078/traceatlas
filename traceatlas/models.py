@@ -5,7 +5,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-VERSION = '0.3.0'
+VERSION = '0.4.0'
 BASE = 'https://data.brreg.no/enhetsregisteret/api/enheter/'
 STATES = {'available', 'not_available', 'blocked', 'not_applicable', 'ambiguous', 'failed'}
 FIELDS = {
@@ -15,7 +15,7 @@ FIELDS = {
     'business_activity': 'aktivitet', 'bankrupt': 'konkurs',
     'in_liquidation': 'underAvvikling',
 }
-EXTERNAL = ['website_identity', 'leadership', 'locations', 'financials', 'jobs', 'news']
+EXTERNAL = ['website_identity', 'leadership', 'locations', 'financials', 'jobs', 'news', 'legal_cases']
 
 
 def now():
