@@ -1,0 +1,49 @@
+{
+  "version": "0.4.0",
+  "mode": "live",
+  "input_count": 100,
+  "output_count": 100,
+  "resumed_count": 0,
+  "states": {
+    "ambiguous": 0,
+    "available": 100,
+    "blocked": 0,
+    "failed": 0,
+    "not_applicable": 0,
+    "not_available": 0
+  },
+  "duration_seconds": 101.612,
+  "claim_count": 809,
+  "website_requests": 0,
+  "legal_requests": 0,
+  "legal_reports": 0,
+  "website_pages_verified": 0,
+  "external_coverage_measured": false,
+  "official_score": null,
+  "external_api_cost_usd": 0,
+  "models": [],
+  "limitations": [
+    "Website and legal-source research is opt-in on reviewed allowlisted domains.",
+    "Leadership, financial and news extraction not implemented; jobs require attributed JSON-LD.",
+    "Soft deadline; network and thread cleanup may exceed the budget.",
+    "Not an official evaluation or qualification result."
+  ],
+  "audit": {
+    "claims_checked": 809,
+    "results_checked": 100,
+    "errors": [],
+    "passed": true,
+    "scope": "Stored claim support and export completeness; not external recall or source truth."
+  },
+  "checked_at": "2026-10-17T03:06:28.156426+00:00",
+  "input_source": "https://builderr.ai/signalpost-company-universe-2025.jsonl.gz",
+  "sampling": "First 100 rows of organizer universe; not random and not an official evaluation",
+  "universe_archive_sha256": "1c89710e5b01f8617e86d09fbdff4a52f2f8dbbba297e74f7164b5984f5a0384",
+  "universe_content_sha256": "b82d6a3e7231d1759a958c282bc4366b80ec2fab8095053d8ed7fa9cd01bc838",
+  "input_sha256": "5b8e7e1e8b8d8b89998142e5fadc5a181701fa9b213ef8c1021dce51eeb01bfe",
+  "profiles_sha256": "91f0f49d347d66e55244737217189e94a08c6a0c646e68a49078f0d68f119897",
+  "python": "3.12.14",
+  "command": "python -m traceatlas --input submission/smoke-input.txt --output runs/smoke --workers 8 --budget-seconds 300 --timeout 12",
+  "network_scope": "Live official registry only; website/legal retrieval not exercised",
+  "external_api_cost_note": "USD 0 paid API/model usage; evaluator infrastructure and network cost excluded"
+}
