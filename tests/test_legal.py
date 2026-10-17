@@ -64,6 +64,15 @@ class LegalTests(unittest.TestCase):
         self.assertIsNone(extract(page(f'A lawsuit about someone else. '+('x '*600)+f'{NAME} org.nr {ORG}')))
         self.assertIsNone(extract(page(f'{NAME} org.nr {ORG} sells furniture.')))
 
+    def test_empty_html_attributes_do_not_break_parsing(self):
+        self.assertIsNotNone(extract(b'<meta property><script type></script>'+page()))
+
+    def test_non_string_manifest_kind_has_a_clear_validation_error(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'sources.json'
+            path.write_text(json.dumps({ORG:[dict(ENTRY,kind=[])]}))
+            with self.assertRaises(ValueError):legal.load_sources(path)
+
     def test_source_manifest_validation(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'sources.json'
