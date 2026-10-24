@@ -26,3 +26,10 @@ class AttributionTests(unittest.TestCase):
             self.assertEqual(extract(value),[])
     def test_parent_hiring_organization_rejected_even_on_verified_site(self):
         self.assertEqual(extract(job(hiringOrganization={'name':'PARENT HOLDING AS'})),[])
+
+    def test_explicit_legal_name_and_schema_url_cannot_hide_parent_ownership(self):
+        for owner in [{'@type':'https://schema.org/Corporation','name':'PARENT HOLDING AS'},
+                      {'@type':'Organization','name':NAME,'legalName':'PARENT HOLDING AS'}]:
+            body=f'<h1>{NAME}</h1>{NAME} Org nr {ORG}<script type="application/ld+json">'.encode()+json.dumps(owner).encode()+b'</script>'
+            self.assertIsNone(verify_site_owner(Document(body),ORG,NAME))
+        self.assertEqual(extract(job(hiringOrganization={'name':NAME,'legalName':'PARENT HOLDING AS','taxID':ORG})),[])

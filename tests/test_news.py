@@ -41,6 +41,7 @@ class NewsTests(unittest.TestCase):
         self.assertEqual(extract(page(article(url='https://example.com/news/another'))),[])
     def test_parent_news_and_group_article_cannot_be_subsidiary_activity(self):
         self.assertEqual(extract(page(article(about={'name':'PARENT HOLDING AS'}))),[])
+        self.assertEqual(extract(page(article(about={'name':NAME,'legalName':'PARENT HOLDING AS'}))),[])
         self.assertEqual(extract(page(visible=f'<article><h1>{HEADLINE}</h1><p>Parent Holding AS opened an office. '+('parent text '*20)+'</p></article>')),[])
     def test_future_invalid_and_conflicting_publication_dates_fail_closed(self):
         for value in ['2099-01-01','unknown','2026-10-01T12:00:00']:
