@@ -196,9 +196,10 @@ def verify_site_owner(document, number, legal_name):
     for node in nodes:
         types = node.get('@type', [])
         types = types if isinstance(types, list) else [types]
-        if any(kind in ('Organization', 'Corporation', 'LocalBusiness', 'https://schema.org/Organization', 'http://schema.org/Organization') for kind in types):
+        type_names = [kind.rsplit('/', 1)[-1].split(':')[-1] for kind in types if isinstance(kind, str)]
+        if any(kind in ('Organization', 'Corporation', 'LocalBusiness') for kind in type_names) or 'taxID' in node or 'vatID' in node:
             owners.append(node)
-        if any(kind in ('WebSite', 'https://schema.org/WebSite') for kind in types) and 'publisher' in node:
+        if 'WebSite' in type_names and 'publisher' in node:
             publisher = node['publisher']
             if isinstance(publisher, dict) and set(publisher) == {'@id'}:
                 publisher = by_id.get(publisher['@id'])
@@ -206,7 +207,7 @@ def verify_site_owner(document, number, legal_name):
     name = normalize_name(legal_name)
     if owners:
         for owner in owners:
-            if not isinstance(owner, dict) or not isinstance(owner.get('name'), str) or normalize_name(owner['name']) != name:
+            if not isinstance(owner, dict) or not isinstance(owner.get('legalName', owner.get('name')), str) or normalize_name(owner.get('legalName', owner.get('name'))) != name:
                 return None
             tax_id = owner.get('taxID', owner.get('vatID'))
             if tax_id is not None and (not isinstance(tax_id, str) or re.sub(r'\D', '', tax_id) != number):

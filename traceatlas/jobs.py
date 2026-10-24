@@ -73,7 +73,7 @@ def extract_jobs(document, number, legal_name, source_url, evidence_id, retrieve
             if not any(kind in ('JobPosting', 'https://schema.org/JobPosting', 'http://schema.org/JobPosting') for kind in types):
                 continue
             organization = node.get('hiringOrganization')
-            if not isinstance(organization, dict) or normalized_name(organization.get('name')) != normalized_name(legal_name):
+            if not isinstance(organization, dict) or normalized_name(organization.get('name') if legacy else organization.get('legalName', organization.get('name'))) != normalized_name(legal_name):
                 continue
             tax_id = organization.get('taxID', organization.get('vatID'))
             if tax_id is not None and (not isinstance(tax_id, str) or re.sub(r'\D', '', tax_id) != number):

@@ -36,7 +36,7 @@ def extract_news(document, number, legal_name, source_url, evidence_id, retrieve
     if not isinstance(headline,str) or not 15 <= len(headline.strip()) <= 300 or normalized_name(headline) not in normalized_name(article) or len(article) < 80:
         return []
     about = node.get('about')
-    if not isinstance(about,dict) or normalized_name(about.get('name')) != normalized_name(legal_name):
+    if not isinstance(about,dict) or normalized_name(about.get('legalName', about.get('name'))) != normalized_name(legal_name):
         return []
     tax_id = about.get('taxID',about.get('vatID'))
     if tax_id is not None and (not isinstance(tax_id,str) or re.sub(r'\D','',tax_id) != number):
