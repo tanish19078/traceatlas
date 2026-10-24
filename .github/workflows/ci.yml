@@ -37,4 +37,10 @@ jobs:
         run: |
           traceatlas --help
           traceatlas-audit --help
-          python -c "import importlib.metadata; assert importlib.metadata.version('traceatlas') == '0.4.0'"
+          python -c "import importlib.metadata; assert importlib.metadata.version('traceatlas') == '0.5.0'"
+      - name: Frozen registry contract and replay check
+        run: |
+          python -m traceatlas --input submission/smoke-input.txt --bulk submission/audit-registry-sample.csv --output runs/frozen-ci --supervised --max-requests 0 --run-id frozen-ci
+          python -O -m traceatlas.audit runs/frozen-ci --input submission/smoke-input.txt
+          python -m traceatlas --input submission/smoke-input.txt --bulk submission/audit-registry-sample.csv --output runs/frozen-ci --supervised --max-requests 0 --run-id frozen-replay
+          python -c "import json,pathlib; rows=[json.loads(s) for s in pathlib.Path('runs/frozen-ci/profiles.jsonl').read_text().splitlines()]; assert len(rows)==100 and all(not r['refresh']['changes'] for r in rows)"
