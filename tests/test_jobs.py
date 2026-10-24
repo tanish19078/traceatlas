@@ -12,18 +12,20 @@ from tests.test_web_research import PAGE, HOST
 
 STAMP='2026-10-10T12:00:00+00:00'
 NAME='SYNTHETIC TEST COMPANY'
+DETAIL='https://example.com/jobs/synthetic-engineer'
+DESCRIPTION='Build dependable software with our engineering team and maintain the resulting systems.'
 
 def job(**changes):
-    value={'@type':'JobPosting','title':'Synthetic Engineer','datePosted':'2026-10-01',
+    value={'url':DETAIL,'description':DESCRIPTION,'@type':'JobPosting','title':'Synthetic Engineer','datePosted':'2026-10-01',
            'validThrough':'2099-12-31','hiringOrganization':{'name':NAME,'taxID':ORG}}
     value.update(changes)
     return value
 
 def document(value):
-    return web.Document(PAGE+b'<script type="application/ld+json">'+json.dumps(value).encode()+b'</script>')
+    return web.Document(PAGE+DESCRIPTION.encode()+b'<script type="application/ld+json">'+json.dumps(value).encode()+b'</script>')
 
 def extract(value):
-    return extract_jobs(document(value),ORG,NAME,'https://example.com/','key',STAMP)
+    return extract_jobs(document(value),ORG,NAME,DETAIL,'key',STAMP)
 
 class JobTests(unittest.TestCase):
     def test_exact_job_has_original_value_and_locator(self):
@@ -45,7 +47,7 @@ class JobTests(unittest.TestCase):
                 self.assertEqual(extract(job(**changes)),[])
 
     def test_graph_and_arrays_have_exact_json_pointer(self):
-        value={'@graph':[{'@type':'Organization'},job()]}
+        value={'@graph':[{'@type':'Organization','name':NAME,'taxID':ORG},job()]}
         self.assertEqual(extract(value)[0]['json_pointer'],'/@graph/1')
         self.assertEqual(extract([job()])[0]['json_pointer'],'/0')
 
@@ -60,18 +62,20 @@ class JobTests(unittest.TestCase):
         self.assertIsNone(web.verify_identity(doc,ORG,NAME))
 
     def test_malformed_json_ld_does_not_break_identity_parser(self):
-        doc=web.Document(PAGE+b'<script type="application/ld+json">bad-json</script>')
-        self.assertEqual(extract_jobs(doc,ORG,NAME,'https://example.com/','key',STAMP),[])
+        doc=web.Document(PAGE+DESCRIPTION.encode()+b'<script type="application/ld+json">bad-json</script>')
+        self.assertEqual(extract_jobs(doc,ORG,NAME,DETAIL,'key',STAMP),[])
         self.assertIsNotNone(web.verify_identity(doc,ORG,NAME))
 
-    def test_bounded_output_for_many_postings(self):
-        self.assertEqual(len(extract([job(title='Role '+str(i)) for i in range(100)])),20)
+    def test_multiple_ads_on_one_page_are_not_individual_job_evidence(self):
+        self.assertEqual(extract([job(title='Role '+str(i)) for i in range(100)]),[])
 
     def test_job_claim_survives_export_audit_and_tampering_fails(self):
-        body=PAGE+b'<script type="application/ld+json">'+json.dumps(job()).encode()+b'</script>'
+        body=PAGE+DESCRIPTION.encode()+b'<script type="application/ld+json">'+json.dumps(job()).encode()+b'</script>'
         class Session:
             def __init__(self,origin,deadline):self.requests=1
-            def page(self,url):self.requests+=1;return body
+            def page(self,url):
+                self.requests+=1
+                return PAGE.replace(b'/contact',b'/jobs/synthetic-engineer') if url == 'https://example.com/' else body
         enrich=web.enrich
         with tempfile.TemporaryDirectory() as folder, patch.object(registry,'fetch',return_value=fixture(hjemmeside=HOST)), patch.object(web,'enrich',side_effect=lambda row,domains,deadline:enrich(row,domains,deadline,Session)):
             core.run_batch([ORG],folder,allowed_domains=[HOST])

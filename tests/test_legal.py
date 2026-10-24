@@ -15,7 +15,8 @@ ENTRY = {'url': URL, 'kind': 'news', 'access_reviewed': True}
 
 def page(text=None, date='2026-10-01'):
     text = text or f'{NAME} org.nr {ORG} reports a lawsuit, case no. ABC-123. Allegations are disputed.'
-    return (f'<meta property="article:published_time" content="{date}"><p>{text}</p>').encode()
+    record={'@type':'NewsArticle','url':URL,'headline':'Synthetic company public update','datePublished':date}
+    return (f'<meta property="article:published_time" content="{date}"><article><h1>Synthetic company public update</h1><p>{text}</p></article><script type="application/ld+json">'+json.dumps(record)+'</script>').encode()
 
 def extract(body=None, kind='news'):
     return legal.extract_report(web.Document(body or page()), ORG, NAME, URL, 'hash', STAMP, kind)
@@ -56,7 +57,7 @@ class LegalTests(unittest.TestCase):
             self.assertIsNone(extract(body))
 
     def test_json_ld_article_date_supported_without_script_identity(self):
-        body=f'<p>{NAME} org.nr {ORG} lawsuit</p><script type="application/ld+json">'.encode()+json.dumps({'@graph':[{'@type':'NewsArticle','datePublished':'2026-10-01'}]}).encode()+b'</script>'
+        body=page().replace(b'<meta property="article:published_time" content="2026-10-01">',b'')
         self.assertIsNotNone(extract(body))
         self.assertIsNone(extract(b'<script type="application/ld+json">'+json.dumps({'@type':'NewsArticle','datePublished':'2026-10-01','text':f'{NAME} org.nr {ORG} lawsuit'}).encode()+b'</script>'))
 
@@ -72,6 +73,14 @@ class LegalTests(unittest.TestCase):
             path=Path(folder)/'sources.json'
             path.write_text(json.dumps({ORG:[dict(ENTRY,kind=[])]}))
             with self.assertRaises(ValueError):legal.load_sources(path)
+
+    def test_news_footer_identity_does_not_attribute_an_unrelated_article(self):
+        body=page().replace(f'{NAME} org.nr {ORG}'.encode(),b'PARENT HOLDING AS')+f'<footer>{NAME} org.nr {ORG}</footer>'.encode()
+        self.assertIsNone(extract(body))
+
+    def test_legal_news_requires_a_post_not_a_dated_product_page(self):
+        self.assertIsNone(extract(page().replace(b'NewsArticle',b'Product')))
+        self.assertIsNone(extract(page().replace(b'<article>',b'<div>').replace(b'</article>',b'</div>')))
 
     def test_source_manifest_validation(self):
         with tempfile.TemporaryDirectory() as folder:
