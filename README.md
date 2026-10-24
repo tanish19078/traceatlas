@@ -18,6 +18,7 @@ came from, when they were checked, and what is still unknown.
   number before accepting a reviewed company page.
 - **Structured jobs:** extracts attributed JSON-LD postings, checks employer
   identity and dates, and preserves the original record.
+- **Dated news:** accepts individual, visible articles about the exact company, with publication dates and source records.
 - **Legal reporting:** fetches reviewed news or HTML filing URLs and preserves
   dated passages about legal proceedings, including case references when reported.
 - **Change history:** shows supported changes and keeps earlier evidence when a
@@ -72,8 +73,8 @@ python -m traceatlas --input companies.txt --output runs/web --allow-domain comp
 ```
 
 Accepted pages must show the exact legal name and labelled organisation number.
-Pages with multiple labelled company numbers are rejected. Structured job
-postings must also match the employer; expired or future postings are skipped
+Pages with multiple labelled company numbers or conflicting owner/publisher identities are rejected. A subsidiary in a group footer does not establish ownership. Structured job
+postings must represent a single ad on its own URL, include a visible description, and match the employer; expired or future postings are skipped
 as of retrieval. An absent expiry stays unknown.
 
 For legal news and filings, create a `sources.json` map:
@@ -104,6 +105,30 @@ All external HTML requests use public HTTPS hostnames, checked DNS addresses,
 TLS hostname verification, robots rules, response-size limits and shared
 per-host rate controls. Redirects are not followed. Fixture mode stays offline.
 
+## Frozen data and run controls
+
+Use a supplied Brreg snapshot without live registry lookups:
+
+```bash
+python -m traceatlas --input companies.txt --bulk registry.csv --output runs/frozen --supervised --budget-seconds 2700
+```
+
+CSV and API-shaped JSONL are supported; gzip is detected from the contents,
+including compressed files named `.csv`. Only requested companies are retained
+in memory. The file hash and original selected rows are preserved in the evidence.
+A missing company remains explicitly unavailable; there is no live fallback.
+Bulk input is separate from synthetic `--fixtures` mode.
+
+The CLI defaults to 45 minutes and at most 20 request attempts per input company,
+shared across workers, including robots requests and failed attempts. Use
+`--max-requests` to lower that cap. HTTP 429 starts a shared host cooldown and
+honors `Retry-After`. No request is made if the cooldown outlasts the deadline.
+
+`--supervised` runs research in a separate worker process, reserves finalization
+time, and stops a stalled worker before the budget. Checked completed results
+survive; unfinished inputs receive explicit failed results. If a worker is
+terminated, the report labels checkpoint request counts as a lower bound.
+
 ## Refresh or resume
 
 Run again with the same output directory for a fresh observation and change
@@ -123,6 +148,7 @@ prevents concurrent writers from using the same output directory.
 | File | Purpose |
 | --- | --- |
 | `index.html` | Standalone evidence explorer, availability states and refresh changes |
+| `envelopes.jsonl` | Validated interchange output with availability, evidence references and operations |
 | `profiles.jsonl` | Company profiles in input order |
 | `snapshots/` | Original registry JSON and accepted HTML, named by content hash |
 | `history.sqlite3` | Observations and latest supported profiles |
@@ -145,7 +171,7 @@ python -m examples.demo
 python -O -m traceatlas.audit runs/demo --expected-count 1
 ```
 
-The 89-test suite covers company matching, source integrity, legal-report dates,
+The 127-test suite covers company matching, source integrity, legal-report dates,
 refresh history, recovery, output escaping and network safeguards. CI runs on
 Python 3.11, 3.12 and 3.13 and checks installation outside the checkout.
 
@@ -161,8 +187,8 @@ parsing are not implemented. Legal research uses supplied reviewed URLs. Website
 and legal-source integration are tested with offline HTML fixtures; successful
 live external retrieval has not yet been validated in this environment.
 
-The time budget is a soft deadline: DNS, network and thread cleanup can exceed
-it. The auditor verifies support in saved snapshots; it cannot independently
+Direct Python API calls use a soft deadline. The supervised CLI can stop a
+stalled research worker, but final filesystem writes are not preemptible. The auditor verifies support in saved snapshots; it cannot independently
 establish that a source is truthful or that every relevant fact was found.
 
 Registry facts come from [Brønnøysundregistrene's public entity API](https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/index.html).
