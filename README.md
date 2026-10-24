@@ -73,7 +73,9 @@ python -m traceatlas --input companies.txt --output runs/web --allow-domain comp
 ```
 
 Accepted pages must show the exact legal name and labelled organisation number.
-Pages with multiple labelled company numbers or conflicting owner/publisher identities are rejected. A subsidiary in a group footer does not establish ownership. Structured job
+Pages with multiple labelled company numbers or conflicting owner/publisher identities are rejected. A subsidiary in a group footer does not establish ownership. An explicit
+`legalName` takes precedence over a brand `name` when checking website owners
+and employers; a conflicting parent identity causes abstention. Structured job
 postings must represent a single ad on its own URL, include a visible description, and match the employer; expired or future postings are skipped
 as of retrieval. An absent expiry stays unknown.
 
@@ -171,7 +173,7 @@ python -m examples.demo
 python -O -m traceatlas.audit runs/demo --expected-count 1
 ```
 
-The 127-test suite covers company matching, source integrity, legal-report dates,
+The 128-test suite covers company matching, source integrity, legal-report dates,
 refresh history, recovery, output escaping and network safeguards. CI runs on
 Python 3.11, 3.12 and 3.13 and checks installation outside the checkout.
 
