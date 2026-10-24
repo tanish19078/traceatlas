@@ -27,6 +27,9 @@ def render(results, target):
             if claim['field'] == 'jobs' and isinstance(claim['value'], dict):
                 posting = claim['value']
                 display_value = '<strong>' + esc(posting.get('title', 'Job posting')) + '</strong><p>Posted ' + esc(posting.get('datePosted', 'unknown')) + '</p><p>Expiry: ' + esc(posting.get('validThrough', 'not reported')) + '</p><details><summary>Original structured record</summary><pre>' + esc(json.dumps(posting, ensure_ascii=False, indent=2)) + '</pre></details>'
+            if claim['field'] == 'news' and isinstance(claim['value'], dict):
+                story = claim['value']
+                display_value = '<strong>' + esc(story.get('headline', 'News article')) + '</strong><p>Published ' + esc(story.get('datePublished', 'unknown')) + '</p><details><summary>Original structured article</summary><pre>' + esc(json.dumps(story, ensure_ascii=False, indent=2)) + '</pre></details>'
             if claim['field'] == 'legal_cases':
                 report = claim['value']
                 display_value = '<strong>Source report · ' + esc(report['source_kind']) + '</strong><p>Published ' + esc(report['published_at']) + ' · Case reference: ' + esc(report['case_reference'] or 'not reported') + '</p><blockquote>' + esc(report['reported_text']) + '</blockquote><p>Reported by the linked source. Liability and court outcome are not inferred.</p>'

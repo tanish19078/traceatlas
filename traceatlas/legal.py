@@ -58,13 +58,39 @@ def publication_date(document, retrieved_at):
     return dates[0].isoformat()
 
 
-def extract_report(document, number, legal_name, url, evidence_id, retrieved_at, kind):
+def extract_report(document, number, legal_name, url, evidence_id, retrieved_at, kind, legacy=False):
     proof = verify_identity(document, number, legal_name)
     published = publication_date(document, retrieved_at)
     if not isinstance(kind, str) or kind not in KINDS or proof is None or published is None:
         return None
-    # A distant footer identity cannot attribute an unrelated litigation story.
-    start, end = max(0, proof[0]-450), min(len(document.text), proof[1]+450)
+    # News must prove identity in the actual article, not the site footer.
+    article_start, article_end = 0, len(document.text)
+    if kind == 'news' and not legacy:
+        if len(document.article_texts) != 1:
+            return None
+        article = document.article_texts[0]
+        local_proof = verify_identity(Document(article.encode()), number, legal_name)
+        if local_proof is None:
+            return None
+        records = [node for block in document.json_ld for _, node in schema_nodes(block)
+                   if any(t in ('NewsArticle', 'Article', 'https://schema.org/NewsArticle', 'https://schema.org/Article') for t in (node.get('@type') if isinstance(node.get('@type'), list) else [node.get('@type')]))]
+        if len({canonical(node) for node in records}) != 1:
+            return None
+        record = records[0]
+        try:
+            if normalize_url(record.get('url', record.get('@id'))) != normalize_url(url) or parsed_date(record.get('datePublished')).isoformat() != published:
+                return None
+        except (ValueError, TypeError):
+            return None
+        headline = record.get('headline')
+        if not isinstance(headline, str) or len(headline.strip()) < 15 or headline not in article:
+            return None
+        article_start = document.text.find(article)
+        if article_start < 0:
+            return None
+        article_end = article_start + len(article)
+        proof = [article_start + local_proof[0], article_start + local_proof[1]]
+    start, end = max(article_start, proof[0]-450), min(article_end, proof[1]+450)
     passage = document.text[start:end]
     if not LEGAL.search(passage):
         return None
@@ -75,7 +101,7 @@ def extract_report(document, number, legal_name, url, evidence_id, retrieved_at,
     subject = 'legal_cases:' + url
     return {'id': digest((number + subject + canonical(value)).encode()), 'field': 'legal_cases',
             'subject': subject, 'value': value, 'evidence_id': evidence_id, 'text_span': [start, end],
-            'reporting_period': None, 'effective_date': published, 'extraction_method': 'legal_report_v1'}
+            'reporting_period': None, 'effective_date': published, 'extraction_method': 'legal_report_v1' if legacy else 'legal_report_v2'}
 
 
 def enrich_legal(result, entries, allowed_domains, deadline, session_factory=None):
@@ -110,7 +136,7 @@ def enrich_legal(result, entries, allowed_domains, deadline, session_factory=Non
                 continue
             evidence.append({'id': key, 'source_url': url, 'retrieved_at': stamp,
                 'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
-                'source_class': KINDS[entry['kind']], 'extractor_version': 'legal_report_v1',
+                'source_class': KINDS[entry['kind']], 'extractor_version': 'legal_report_v2',
                 'identity_span': verify_identity(doc, number, name), 'legal_name': name,
                 'organisation_number': number, 'synthetic': False,
                 'access_policy': 'reviewed_domain_allowlist_and_robots'})

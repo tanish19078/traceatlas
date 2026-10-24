@@ -3,6 +3,7 @@ import json
 import urllib.error
 import urllib.request
 from pathlib import Path
+from .network import BudgetError
 from .models import BASE, VERSION, FIELDS, EXTERNAL, now, digest, valid_org, canonical, envelope
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -15,25 +16,37 @@ def fetch(number, timeout=12):
         'User-Agent': 'TraceAtlas/0.1 (company research; https://github.com/tanish19078/traceatlas)',
         'Accept': 'application/json',
     })
-    with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
+    from .network import take_request, rate_limited
+    take_request(BASE + number)
+    try:
+        response = urllib.request.build_opener(NoRedirect).open(request, timeout=timeout)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            rate_limited(BASE + number, exc.headers.get('Retry-After') if exc.headers else None)
+        raise
+    with response:
         body = response.read(2_000_001)
         if len(body) > 2_000_000:
             raise ValueError('response_size_limit')
         return body
 
 
-def research(number, fixture_dir=None, timeout=12):
+def research(number, fixture_dir=None, timeout=12, bulk=None):
     result = envelope(number)
     if not valid_org(number):
         result['errors'] = ['invalid_organisation_number']
         return result, None
     fetched_at = now()
     try:
-        if fixture_dir:
+        if bulk is not None:
+            body = bulk.body(number)
+        elif fixture_dir:
             body = (Path(fixture_dir) / (number + '.json')).read_bytes()
         else:
             body = fetch(number, timeout)
-        data = json.loads(body)
+        from .bulk import decode_snapshot, BULK_URL
+        raw_data = json.loads(body)
+        data = decode_snapshot(raw_data) if isinstance(raw_data, dict) else raw_data
         if not isinstance(data, dict):
             raise ValueError('expected_registry_object')
         if data.get('organisasjonsnummer') != number:
@@ -44,14 +57,17 @@ def research(number, fixture_dir=None, timeout=12):
             raise ValueError('missing_legal_name')
         snapshot = digest(body)
         result['state'] = 'available'
-        result['source_mode'] = 'fixture' if fixture_dir else 'live'
+        result['source_mode'] = 'fixture' if fixture_dir else 'bulk' if bulk is not None else 'live'
         result['legal_identity'] = {'organisation_number': number, 'name': data['navn']}
         result['errors'] = []
-        evidence = {'id': snapshot, 'source_url': BASE + number,
+        evidence = {'id': snapshot, 'source_url': (BULK_URL if bulk is not None else BASE + number),
                     'retrieved_at': fetched_at, 'content_sha256': snapshot,
                     'snapshot_path': 'snapshots/' + snapshot + '.json',
                     'source_class': 'official_registry', 'extractor_version': VERSION,
                     'synthetic': bool(fixture_dir)}
+        if bulk is not None:
+            evidence['bulk_file_sha256'] = bulk.sha256
+            evidence['registry_mode'] = 'frozen_bulk'
         result['evidence'].append(evidence)
         fields = dict(FIELDS)
         if data.get('harRegistrertAntallAnsatte') is True:
@@ -87,12 +103,14 @@ def research(number, fixture_dir=None, timeout=12):
     except urllib.error.HTTPError as exc:
         result = envelope(number, 'not_available' if exc.code == 404 else
                           'blocked' if exc.code in (401,403,429) else 'failed', 'http_' + str(exc.code))
+    except BudgetError as exc:
+        result = envelope(number, 'blocked' if str(exc) == 'host_rate_limited' else 'failed', str(exc))
     except FileNotFoundError:
-        result = envelope(number, 'not_available', 'fixture_missing')
+        result = envelope(number, 'not_available', 'company_absent_in_frozen_registry' if bulk is not None else 'fixture_missing')
     except Exception as exc:
         # Do not copy request URLs, credentials or arbitrary server text to output.
         result = envelope(number, 'failed', type(exc).__name__)
-    result['source_mode'] = 'fixture' if fixture_dir else 'live'
+    result['source_mode'] = 'fixture' if fixture_dir else 'bulk' if bulk is not None else 'live'
     return result, None
 
 

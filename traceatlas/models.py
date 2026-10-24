@@ -5,7 +5,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-VERSION = '0.4.0'
+VERSION = '0.5.0'
 BASE = 'https://data.brreg.no/enhetsregisteret/api/enheter/'
 STATES = {'available', 'not_available', 'blocked', 'not_applicable', 'ambiguous', 'failed'}
 FIELDS = {

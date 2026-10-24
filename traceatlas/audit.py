@@ -47,11 +47,17 @@ def validate_result(result, root, historical=False):
         stamp = datetime.fromisoformat(item['retrieved_at'])
         require(stamp.tzinfo is not None, 'retrieval timezone missing')
         if source_class == 'official_registry':
-            data = json.loads(body)
+            from .bulk import decode_snapshot, BULK_URL, FORMAT
+            raw = json.loads(body)
+            data = decode_snapshot(raw)
             require(data['organisasjonsnummer'] == result['organisation_number'], 'wrong company')
             if not historical:
                 require(data['navn'] == result['legal_identity']['name'], 'wrong legal name')
-            require(item['source_url'] == BASE + result['organisation_number'], 'wrong source URL')
+            if raw.get('_format') == FORMAT:
+                require(item.get('registry_mode') == 'frozen_bulk' and item.get('bulk_file_sha256') == raw['file_sha256'], 'bulk provenance mismatch')
+                require(item['source_url'] == BULK_URL, 'wrong bulk source URL')
+            else:
+                require(item['source_url'] == BASE + result['organisation_number'], 'wrong source URL')
             fields = dict(FIELDS, registered_employees='antallAnsatte')
             require(claim['field'] in fields, 'unknown registry field')
             pointer = claim['json_pointer']
@@ -64,27 +70,33 @@ def validate_result(result, root, historical=False):
             if claim['field'] == 'registered_employees':
                 require(type(value) is int and value >= 0, 'invalid employee count')
         else:
-            from .web import Document, normalize_url, verify_identity
+            from .web import Document, normalize_url, verify_identity, verify_site_owner
             require(normalize_url(item['source_url']) == item['source_url'], 'unsafe website URL')
             document = Document(body)
             legal_name = item.get('legal_name', result['legal_identity'].get('name', '')) if historical else result['legal_identity']['name']
-            proof = verify_identity(document, result['organisation_number'], legal_name)
+            gate = verify_site_owner if item['source_class'] == 'verified_company_website' and item['extractor_version'] == 'visible_text_v2' else verify_identity
+            proof = gate(document, result['organisation_number'], legal_name)
             require(proof is not None and proof == item['identity_span'], 'website entity proof missing')
             if source_class in ('legal_news_report', 'legal_filing_report'):
                 from .legal import extract_report
                 kind = 'news' if source_class == 'legal_news_report' else 'filing'
-                supported = extract_report(document, result['organisation_number'], legal_name, item['source_url'], key, item['retrieved_at'], kind)
-                require(claim == supported and item['extractor_version'] == 'legal_report_v1', 'unsupported legal source report')
+                supported = extract_report(document, result['organisation_number'], legal_name, item['source_url'], key, item['retrieved_at'], kind, legacy=claim['extraction_method'] == 'legal_report_v1')
+                require(claim == supported and item['extractor_version'] == claim['extraction_method'] and claim['extraction_method'] in ('legal_report_v1', 'legal_report_v2'), 'unsupported legal source report')
                 value = claim['value']
-            elif claim['extraction_method'] == 'json_ld_job_v1':
+            elif claim['extraction_method'] == 'json_ld_news_v1':
+                from .news import extract_news
+                supported = extract_news(document, result['organisation_number'], legal_name, item['source_url'], key, item['retrieved_at'])
+                require(claim in supported, 'unsupported structured news article')
+                value = claim['value']
+            elif claim['extraction_method'] in ('json_ld_job_v1', 'json_ld_job_v2'):
                 from .jobs import extract_jobs
-                supported = extract_jobs(document, result['organisation_number'], legal_name, item['source_url'], key, item['retrieved_at'])
+                supported = extract_jobs(document, result['organisation_number'], legal_name, item['source_url'], key, item['retrieved_at'], legacy=claim['extraction_method'] == 'json_ld_job_v1')
                 require(claim in supported, 'unsupported structured job posting')
                 value = claim['value']
             else:
                 require(claim['field'] in ('website_identity', 'company_page'), 'unknown website field')
                 require(claim['subject'] == claim['field'] + ':' + item['source_url'], 'wrong website subject')
-                require(item['extractor_version'] == claim['extraction_method'] == 'visible_text_v1', 'unknown website extractor')
+                require(item['extractor_version'] == claim['extraction_method'] and claim['extraction_method'] in ('visible_text_v1', 'visible_text_v2'), 'unknown website extractor')
                 span = claim['text_span']
                 require(isinstance(span, list) and len(span) == 2 and all(type(x) is int for x in span), 'invalid text span')
                 start, end = span

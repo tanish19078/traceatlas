@@ -86,6 +86,9 @@ def get_page(url, deadline):
         path = parsed.path + ('?' + parsed.query if parsed.query else '')
         conn.request('GET', path, headers={'User-Agent': USER_AGENT + '/0.2 (+https://github.com/tanish19078/traceatlas)', 'Accept': 'text/html,text/plain', 'Accept-Encoding': 'identity'})
         response = conn.getresponse()
+        if response.status == 429:
+            from .network import rate_limited
+            rate_limited(url, response.getheader('Retry-After'))
         content = bytearray()
         while True:
             remaining = deadline - time.monotonic()
@@ -110,11 +113,19 @@ class Document(HTMLParser):
         self.parts, self.links, self.hidden = [], [], 0
         self.json_ld, self.ld_buffer = [], None
         self.publication_dates = []
+        self.headings, self.heading_parts, self.heading_tag = [], [], None
+        self.article_texts, self.article_parts, self.article_depth = [], [], 0
         self.feed(body.decode('utf-8', errors='replace'))
         self.text = ' '.join(' '.join(self.parts).split())
 
     def handle_starttag(self, tag, attrs):
         attributes = dict(attrs)
+        if tag in ('title', 'h1') and not self.hidden:
+            self.heading_tag, self.heading_parts = tag, []
+        if tag == 'article' and not self.hidden:
+            if self.article_depth == 0:
+                self.article_parts = []
+            self.article_depth += 1
         if tag == 'meta' and not self.hidden and (attributes.get('property') or attributes.get('name') or '').casefold() in ('article:published_time', 'datepublished'):
             self.publication_dates.append(attributes.get('content'))
         if tag == 'script' and not self.hidden and (attributes.get('type') or '').casefold() == 'application/ld+json' and len(self.json_ld) < 100:
@@ -127,6 +138,13 @@ class Document(HTMLParser):
                 self.links.append(href)
 
     def handle_endtag(self, tag):
+        if tag == self.heading_tag:
+            self.headings.append(' '.join(' '.join(self.heading_parts).split()))
+            self.heading_tag = None
+        if tag == 'article' and self.article_depth:
+            self.article_depth -= 1
+            if self.article_depth == 0 and len(self.article_texts) < 20:
+                self.article_texts.append(' '.join(' '.join(self.article_parts).split()))
         if tag == 'script' and self.ld_buffer is not None:
             try:
                 self.json_ld.append(json.loads(''.join(self.ld_buffer), parse_constant=lambda value: (_ for _ in ()).throw(ValueError('nonfinite_json'))))
@@ -141,6 +159,10 @@ class Document(HTMLParser):
             self.ld_buffer.append(data)
         if not self.hidden:
             self.parts.append(data)
+            if self.heading_tag:
+                self.heading_parts.append(data)
+            if self.article_depth:
+                self.article_parts.append(data)
 
 
 def normalize_name(value):
@@ -160,6 +182,44 @@ def verify_identity(document, number, legal_name):
             continue
         return [match.start(), match.end()]
     return None
+
+
+def verify_site_owner(document, number, legal_name):
+    """A subsidiary in a group's footer does not establish site ownership."""
+    proof = verify_identity(document, number, legal_name)
+    if proof is None:
+        return None
+    from .jobs import schema_nodes
+    nodes = [node for block in document.json_ld for _, node in schema_nodes(block)]
+    by_id = {node['@id']: node for node in nodes if isinstance(node.get('@id'), str)}
+    owners = []
+    for node in nodes:
+        types = node.get('@type', [])
+        types = types if isinstance(types, list) else [types]
+        if any(kind in ('Organization', 'Corporation', 'LocalBusiness', 'https://schema.org/Organization', 'http://schema.org/Organization') for kind in types):
+            owners.append(node)
+        if any(kind in ('WebSite', 'https://schema.org/WebSite') for kind in types) and 'publisher' in node:
+            publisher = node['publisher']
+            if isinstance(publisher, dict) and set(publisher) == {'@id'}:
+                publisher = by_id.get(publisher['@id'])
+            owners.append(publisher)
+    name = normalize_name(legal_name)
+    if owners:
+        for owner in owners:
+            if not isinstance(owner, dict) or not isinstance(owner.get('name'), str) or normalize_name(owner['name']) != name:
+                return None
+            tax_id = owner.get('taxID', owner.get('vatID'))
+            if tax_id is not None and (not isinstance(tax_id, str) or re.sub(r'\D', '', tax_id) != number):
+                return None
+    else:
+        headings = [normalize_name(value) for value in document.headings if value.strip()]
+        if headings and not any(value == name or value.endswith(' ' + name) for value in headings):
+            return None
+        if not headings and not normalize_name(document.text).startswith(name):
+            return None
+        if re.search(r'\b(?:group website|our subsidiaries|group companies|våre selskaper|konsernets nettside)\b', document.text, re.I):
+            return None
+    return proof
 
 
 class SiteSession:
@@ -200,10 +260,16 @@ class SiteSession:
                 raise AccessError('deadline_exhausted')
             if wait:
                 time.sleep(wait)
+            from .network import take_request
+            take_request(url, self.deadline)
             self.requests += 1
             self.last_request = self.gate[1] = time.monotonic()
             try:
-                return self.transport(url, self.deadline)
+                response = self.transport(url, self.deadline)
+                if response[0] == 429 and self.transport is not get_page:
+                    from .network import rate_limited
+                    rate_limited(url)
+                return response
             except Exception as exc:
                 exc.requests = self.requests
                 raise
@@ -245,7 +311,7 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
         session = session_factory(url, deadline)
         body = session.page(url)
         document = Document(body)
-        proof = verify_identity(document, number, legal_name)
+        proof = verify_site_owner(document, number, legal_name)
         if not proof:
             result['availability']['website_identity'] = {'state': 'ambiguous', 'reason': 'exact_entity_proof_not_found'}
             return blobs
@@ -266,7 +332,7 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
                 seen.add(candidate)
                 page_body = session.page(candidate)
                 page_doc = Document(page_body)
-                page_proof = verify_identity(page_doc, number, legal_name)
+                page_proof = verify_site_owner(page_doc, number, legal_name)
                 if page_proof:
                     pages.append((candidate, page_body, page_doc, page_proof))
             except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
@@ -279,13 +345,18 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
             evidence_ids.add(key)
             evidence = {'id': key, 'source_url': page_url, 'retrieved_at': datetime.now(timezone.utc).isoformat(),
                         'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
-                        'source_class': 'verified_company_website', 'extractor_version': 'visible_text_v1',
+                        'source_class': 'verified_company_website', 'extractor_version': 'visible_text_v2',
                         'identity_span': page_proof, 'legal_name': legal_name, 'organisation_number': number, 'synthetic': False,
                         'access_policy': 'reviewed_domain_allowlist_and_robots'}
             result['evidence'].append(evidence)
             from .jobs import extract_jobs
             jobs = extract_jobs(page_doc, number, legal_name, page_url, key, evidence['retrieved_at'])
             result['claims'].extend(jobs)
+            from .news import extract_news
+            news = extract_news(page_doc, number, legal_name, page_url, key, evidence['retrieved_at'])
+            result['claims'].extend(news)
+            if news:
+                result['availability']['news'] = {'state': 'available'}
             if jobs:
                 result['availability']['jobs'] = {'state': 'available'}
             blobs.append((page_body, '.html'))
@@ -296,7 +367,7 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
             result['claims'].append({'id': hashlib.sha256((number+field+page_url+value).encode()).hexdigest(),
                 'field': field, 'subject': field + ':' + page_url, 'value': value, 'evidence_id': key,
                 'text_span': [start, end], 'reporting_period': None, 'effective_date': None,
-                'extraction_method': 'visible_text_v1'})
+                'extraction_method': 'visible_text_v2'})
             result['availability'][field] = {'state': 'available'}
             result['website_research']['pages_verified'] += 1
         result['summary'] = legal_name + ': registry identity and company website verified. Inspect the linked passages for support.'

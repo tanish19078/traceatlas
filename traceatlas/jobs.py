@@ -33,8 +33,36 @@ def parsed_date(value):
     return parsed.astimezone(timezone.utc).date()
 
 
-def extract_jobs(document, number, legal_name, source_url, evidence_id, retrieved_at):
+def extract_jobs(document, number, legal_name, source_url, evidence_id, retrieved_at, legacy=False):
     """Publish only attributed, dated records; absence never implies zero jobs."""
+    if not legacy:
+        from urllib.parse import urlsplit, parse_qs
+        from .web import normalize_url, verify_site_owner, Document
+        if verify_site_owner(document, number, legal_name) is None:
+            return []
+        parsed = urlsplit(source_url)
+        if not parsed.path.strip('/') or parsed.path.rstrip('/').rsplit('/', 1)[-1].casefold() in ('jobs', 'careers', 'karriere', 'ledige-stillinger', 'search') or any(key in parse_qs(parsed.query) for key in ('q', 'search', 'query')):
+            return []
+        postings = [node for block in document.json_ld for _, node in schema_nodes(block)
+                    if any(kind in ('JobPosting', 'https://schema.org/JobPosting', 'http://schema.org/JobPosting') for kind in (node.get('@type') if isinstance(node.get('@type'), list) else [node.get('@type')]))]
+        try:
+            if len({canonical(node) for node in postings}) != 1:
+                return []
+        except (ValueError, TypeError, RecursionError):
+            return []
+        posting = postings[0]
+        target = posting.get('url', posting.get('@id'))
+        try:
+            if normalize_url(target) != normalize_url(source_url):
+                return []
+        except ValueError:
+            return []
+        description = posting.get('description')
+        if not isinstance(description, str):
+            return []
+        visible_description = Document(description.encode()).text
+        if len(visible_description.strip()) < 40 or normalized_name(visible_description) not in normalized_name(document.text):
+            return []
     today = parsed_date(retrieved_at)
     claims, ambiguous = {}, set()
     seen = set()
@@ -79,5 +107,5 @@ def extract_jobs(document, number, legal_name, source_url, evidence_id, retrieve
                 'field': 'jobs', 'subject': subject, 'value': node,
                 'evidence_id': evidence_id, 'json_ld_block': block_index,
                 'json_pointer': pointer, 'reporting_period': None,
-                'effective_date': node['datePosted'], 'extraction_method': 'json_ld_job_v1'}
+                'effective_date': node['datePosted'], 'extraction_method': 'json_ld_job_v1' if legacy else 'json_ld_job_v2'}
     return list(claims.values())[:20]

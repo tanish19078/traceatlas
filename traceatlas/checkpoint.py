@@ -33,7 +33,7 @@ def output_lock(root):
         stream.close()
 
 
-def prepare(root, numbers, fixture_dir, allowed_domains, resume, legal_sources=None):
+def prepare(root, numbers, fixture_dir, allowed_domains, resume, legal_sources=None, bulk_sha256=None):
     fixtures = {}
     if fixture_dir:
         for number in sorted(set(numbers)):
@@ -41,7 +41,7 @@ def prepare(root, numbers, fixture_dir, allowed_domains, resume, legal_sources=N
                 path = Path(fixture_dir) / (number + '.json')
                 fixtures[number] = digest(path.read_bytes()) if path.exists() else None
     expected = {'version': VERSION, 'input_sha256': digest(canonical(numbers).encode()),
-        'input_count': len(numbers), 'mode': 'fixture' if fixture_dir else 'live',
+        'input_count': len(numbers), 'mode': 'fixture' if fixture_dir else 'bulk' if bulk_sha256 else 'live', 'bulk_file_sha256': bulk_sha256,
         'legal_sources_sha256': digest(canonical(legal_sources or {}).encode()),
         'fixture_sha256': fixtures, 'allowed_domains': sorted(set(allowed_domains or []))}
     manifest = Path(root) / 'run.json'
