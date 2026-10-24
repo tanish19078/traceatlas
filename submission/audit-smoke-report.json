@@ -1,0 +1,58 @@
+{
+  "run_id": "revision-smoke-replay",
+  "started_at": "2026-10-24T14:56:39.987293+00:00",
+  "completed_at": "2026-10-24T14:56:40.203292+00:00",
+  "contract_validation": {
+    "passed": true,
+    "results_checked": 100,
+    "errors": []
+  },
+  "p50_ms": 0.055,
+  "p95_ms": 0.178,
+  "version": "0.5.0",
+  "mode": "bulk",
+  "input_count": 100,
+  "output_count": 100,
+  "resumed_count": 0,
+  "requests": 0,
+  "request_limit": 0,
+  "bulk_file_sha256": "4498f4d30e86ae1051a592aefdcc0c4ab82a402304e7e18d306d045ccc73bd14",
+  "states": {
+    "ambiguous": 0,
+    "available": 98,
+    "blocked": 0,
+    "failed": 0,
+    "not_applicable": 0,
+    "not_available": 2
+  },
+  "duration_seconds": 0.236,
+  "claim_count": 805,
+  "website_requests": 0,
+  "legal_requests": 0,
+  "legal_reports": 0,
+  "website_pages_verified": 0,
+  "external_coverage_measured": false,
+  "official_score": null,
+  "external_api_cost_usd": 0,
+  "models": [],
+  "limitations": [
+    "Website and legal-source research is opt-in on reviewed allowlisted domains.",
+    "Leadership and financial extraction not implemented; jobs/news require individual attributed records and legal sources are reviewed URLs.",
+    "Direct API calls use a soft deadline; the supervised CLI can stop stalled research workers.",
+    "Not an official evaluation or qualification result."
+  ],
+  "native_evidence_audit": {
+    "claims_checked": 805,
+    "results_checked": 100,
+    "errors": [],
+    "passed": true,
+    "scope": "Stored claim support and export completeness; not external recall or source truth."
+  },
+  "replay_material_changes": 0,
+  "network_scope": "Frozen development sample only; no external network requests",
+  "sample_scope": "98 selected records from first 50001 rows of current public Brreg CSV; 100 inputs retained to test two missing rows; not an official frozen batch",
+  "source_url": "https://data.brreg.no/enhetsregisteret/api/enheter/lastned/csv",
+  "sample_selected_on": "2026-10-24",
+  "input_sha256": "5b8e7e1e8b8d8b89998142e5fadc5a181701fa9b213ef8c1021dce51eeb01bfe",
+  "envelopes_sha256": "46f513f9d33eda21de5e91bc40430af7e8d570ffb8474c015368c0a8a694d35c"
+}
