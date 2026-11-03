@@ -16,9 +16,12 @@ input, and the starter kit's `OUTPUT_CONTRACT.md`.
 ## Run command
 
 Python 3.11–3.13; no package install, model keys or third-party runtime dependencies:
+set `BRAVE_SEARCH_API_KEY` to enable search discovery, which makes one billed API
+query and up to one social-focused follow-up per input company. The command below enables it; remove the flag to use
+only registry and name-derived domain discovery.
 
 ```bash
-python -m traceatlas --input /path/to/companies.jsonl --bulk /path/to/frozen-registry.csv --output runs/evaluation --workers 8 --budget-seconds 2700 --discover-websites --supervised --run-id official-run
+python -m traceatlas --input /path/to/companies.jsonl --bulk /path/to/frozen-registry.csv --output runs/evaluation --workers 8 --budget-seconds 2700 --search-websites --supervised --run-id official-run
 ```
 
 Replace the paths and run ID with those supplied for the run. Omit `--bulk` only
@@ -33,7 +36,11 @@ with the original row and file hash preserved. Requested companies missing from
 the supplied file return explicit unavailable results; there is no live fallback.
 Bulk data is genuine supplied data, distinct from synthetic `--fixtures` mode.
 
-Website research remains opt-in through reviewed `--allow-domain` hostnames.
+Website research remains opt-in through reviewed `--allow-domain` hostnames or
+`--search-websites`. Search discovery requires `BRAVE_SEARCH_API_KEY` and makes
+up to two Brave Search API requests per company; its current listed rate is $5
+per 1,000 requests. Search results only nominate pages for direct exact-identity
+checks. The key stays in the environment and is not written to run artifacts.
 Additional reviewed legal sources use `--legal-sources`. No implicit assertion
 of source access rights is made for unseen registry domains.
 

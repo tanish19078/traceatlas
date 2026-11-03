@@ -47,6 +47,17 @@ def render(results, target):
         website_status = ('<p class="muted">Website research: ' + str(website['pages_verified']) +
             ' verified pages · ' + str(website['requests']) + ' requests</p>' +
             ('<p class="muted">Research notes: ' + esc(', '.join(website['errors'])) + '</p>' if website['errors'] else '')) if website else ''
+        search = r.get('search_research')
+        search_status = ''
+        if search:
+            search_status = '<p class="muted">Web search: ' + str(search.get('successful_queries', 0)) + '/' + str(search.get('queries', 0)) + ' successful queries · ' + str(search.get('candidates', 0)) + ' candidate URLs</p>'
+            if search.get('errors'):
+                search_status += '<p class="muted">Search notes: ' + esc(', '.join(search['errors'])) + '</p>'
+        candidate_rows = []
+        for candidate in r.get('candidates', []):
+            if isinstance(candidate, dict) and isinstance(candidate.get('value'), str):
+                candidate_rows.append('<li><code>' + esc(candidate['value']) + '</code> · ' + esc(candidate.get('kind', 'candidate')) + ' · ' + esc(candidate.get('status', 'unknown')) + '</li>')
+        candidate_status = ('<details><summary>Discovered source candidates (' + str(len(candidate_rows)) + ')</summary><ul>' + ''.join(candidate_rows) + '</ul><p class="muted">Search results are leads; only identity-verified pages support published claims.</p></details>') if candidate_rows else ''
         changes = r['refresh']['changes']
         searchable = ' '.join([r['organisation_number'], r['state'], r['legal_identity'].get('name', ''), r['summary']] + [canonical(c['value']) for c in r['claims']]).casefold()
         cards.append('<article class="company-card" data-search="' + esc(searchable) + '"><div class="eyebrow">' + esc(r['organisation_number']) + ' · ' + esc(r['state']) +
@@ -57,6 +68,7 @@ def render(results, target):
                      esc(json.dumps(changes, ensure_ascii=False, indent=2)) + '</pre></details>' +
                      ('<details><summary>Availability and gaps</summary><div class="scroll"><table><thead><tr><th>Field</th><th>State</th><th>Reason</th></tr></thead><tbody>' + gaps + '</tbody></table></div></details>' if gaps else '') +
                      website_status +
+                     search_status + candidate_status +
                      ('<details><summary>Last known evidence</summary><pre>' + esc(json.dumps(r['last_known'],ensure_ascii=False,indent=2)) + '</pre></details>' if 'last_known' in r else '') +
                      ('<p>Errors: ' + esc(', '.join(r['errors'])) + '</p>' if r['errors'] else '') + '</article>')
     atomic_write(target, '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

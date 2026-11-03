@@ -72,8 +72,8 @@ To check a website supplied by the registry:
 python -m traceatlas --input companies.txt --output runs/web --allow-domain company.example.com --timeout 20
 ```
 
-For live batches where the registry has no website, opt in to two `.no` domain
-probes derived from the registered name and town:
+For live batches where the registry has no website, the no-key option probes
+two `.no` domains derived from the registered name and town:
 
 ```bash
 python -m traceatlas --input companies.txt --output runs/discovery --discover-websites --timeout 20
@@ -83,10 +83,34 @@ The crawler honors each candidate site's `robots.txt`, checks public DNS and
 HTTPS, and keeps a candidate only when a page proves the exact registered name
 or labelled organisation number. It follows social links only from that verified
 site and applies the same identity check to each profile. The option uses
-deterministic domain guesses rather than scraping search-engine result pages.
+deterministic domain guesses.
 
-Accepted pages must show the exact legal name and labelled organisation number.
-Pages with multiple labelled company numbers or conflicting owner/publisher identities are rejected. A subsidiary in a group footer does not establish ownership. An explicit
+For broad website and social discovery, enable the Brave Search API integration:
+
+```powershell
+$env:BRAVE_SEARCH_API_KEY = 'your-key'
+python -m traceatlas --input companies.txt --output runs/search --search-websites --timeout 20
+```
+
+On macOS or Linux, use `export BRAVE_SEARCH_API_KEY='your-key'` before the same
+command.
+
+It searches with the registered name and town, then makes a social-focused query
+only when the first result set has no social page. That is at most two billed
+queries per company. It records candidate URLs and never publishes search titles
+or snippets as company facts. Candidate pages
+are fetched through the same HTTPS, DNS, robots and rate controls; a website is
+published only after exact company identity checks, and a social profile must
+name the company or show its labelled organisation number. The search API key is
+read from the environment and is never written to run artifacts. Brave currently
+lists search at $5 per 1,000 requests; TraceAtlas reports that list-price estimate
+in the run cost fields. Check the [Brave API pricing](https://brave.com/search/api/)
+and [web search API reference](https://api-dashboard.search.brave.com/api-reference/web/search/get)
+before enabling it. Search runs are opt-in and require a valid API key.
+
+Accepted pages must show the exact legal name or the labelled organisation
+number. Pages with conflicting labelled company numbers or owner/publisher
+identities are rejected. A subsidiary in a group footer does not establish ownership. An explicit
 `legalName` takes precedence over a brand `name` when checking website owners
 and employers; a conflicting parent identity causes abstention. Structured job
 postings must represent a single ad on its own URL, include a visible description, and match the employer; expired or future postings are skipped
@@ -120,11 +144,11 @@ Live registry runs also retrieve annual accounts, registered roles, and
 sub-entities from Brønnøysundregistrene and archive each response. Revenue
 summaries compare matching company/consolidated report types and currencies across
 periods. Website pages are checked when their registry-supplied domain is in
-`--allow-domain`, or under the explicit `--discover-websites` option. Social profiles
-are considered only when linked from a verified company page, their hostname is
-included in `--allow-domain`, and the profile itself names the exact company or
-shows its labelled organisation number. This avoids treating search snippets,
-brand matches, or unverified profile links as company facts.
+`--allow-domain`, under `--discover-websites`, or from the opt-in `--search-websites`
+provider. Social profiles must be linked from a verified company page or returned
+by that search provider, and the profile itself must name the exact company or
+show its labelled organisation number. Search snippets and brand matches are
+never published as company facts.
 
 All external HTML requests use public HTTPS hostnames, checked DNS addresses,
 TLS hostname verification, robots rules, response-size limits and shared
