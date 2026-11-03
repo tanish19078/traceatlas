@@ -36,8 +36,8 @@ def validate_result(result, root, historical=False):
         require(isinstance(key, str) and len(key) == 64 and all(c in '0123456789abcdef' for c in key), 'invalid snapshot hash')
         require(item['id'] == key, 'evidence id/hash mismatch')
         source_class = item['source_class']
-        require(source_class in ('official_registry', 'verified_company_website', 'legal_news_report', 'legal_filing_report'), 'unknown source class')
-        suffix = '.json' if source_class == 'official_registry' else '.html'
+        require(source_class in ('official_registry', 'official_accounts', 'verified_company_website', 'verified_social_page', 'legal_news_report', 'legal_filing_report'), 'unknown source class')
+        suffix = '.json' if source_class in ('official_registry', 'official_accounts') else '.html'
         require(item['snapshot_path'] == 'snapshots/' + key + suffix, 'wrong snapshot path')
         path = root / 'snapshots' / (key + suffix)
         require(not path.is_symlink(), 'snapshot symlink rejected')
@@ -69,6 +69,25 @@ def validate_result(result, root, historical=False):
             require(claim['id'] == digest((result['organisation_number'] + ':' + claim['field'] + ':' + canonical(value)).encode()), 'wrong registry claim id')
             if claim['field'] == 'registered_employees':
                 require(type(value) is int and value >= 0, 'invalid employee count')
+        elif source_class == 'official_accounts':
+            from .accounts import BASE, extract
+            require(item['source_url'] == BASE + result['organisation_number'], 'wrong accounts source URL')
+            require(item.get('organisation_number') == result['organisation_number'], 'wrong accounts identity')
+            require(item.get('extractor_version') == 'official_accounts_v1', 'unknown accounts extractor')
+            supported = extract(json.loads(body), result['organisation_number'], key)
+            require(claim in supported, 'unsupported annual accounts claim')
+            value = claim['value']
+        elif source_class == 'verified_social_page':
+            from .web import Document, normalize_url, verify_social_identity
+            require(normalize_url(item['source_url']) == item['source_url'], 'unsafe social URL')
+            require(item.get('extractor_version') == 'social_identity_v1', 'unknown social extractor')
+            require(item.get('organisation_number') == result['organisation_number'], 'wrong social identity')
+            proof = verify_social_identity(Document(body), result['organisation_number'], result['legal_identity']['name'])
+            require(proof is not None and proof == item['identity_span'], 'social page identity proof missing')
+            require(claim['field'] == 'social_pages' and claim['subject'] == 'social_pages:' + item['source_url'], 'wrong social claim')
+            require(claim['value'] == item['source_url'] and claim['text_span'] == list(proof), 'unsupported social profile')
+            require(claim['extraction_method'] == 'social_identity_v1', 'unknown social claim extractor')
+            value = claim['value']
         else:
             from .web import Document, normalize_url, verify_identity, verify_site_owner
             require(normalize_url(item['source_url']) == item['source_url'], 'unsafe website URL')

@@ -4,7 +4,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from .network import BudgetError
-from .models import BASE, VERSION, FIELDS, EXTERNAL, now, digest, valid_org, canonical, envelope
+from .models import BASE, VERSION, FIELDS, EXTERNAL, now, digest, valid_org, canonical, envelope, company_summary
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -98,7 +98,7 @@ def research(number, fixture_dir=None, timeout=12, bulk=None):
         for field in EXTERNAL:
             result['availability'][field] = {'state': 'not_available',
                 'reason': 'not_researched_in_registry_baseline'}
-        result['summary'] = data['navn'] + ': official registry facts retrieved. External information remains unresearched.'
+        result['summary'] = company_summary(result)
         return result, body
     except urllib.error.HTTPError as exc:
         result = envelope(number, 'not_available' if exc.code == 404 else

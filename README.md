@@ -103,6 +103,15 @@ an unambiguous publication date. It saves the HTML, supporting passage, dates
 and source kind. The explorer labels these items **source report only**. An empty
 or failed lookup does not establish that a company has no legal cases.
 
+Live registry runs also retrieve annual accounts from Brønnøysundregistrene and
+archive the response. Revenue summaries compare matching company/consolidated
+report types and currencies across periods. Website pages are checked only when
+their registry-supplied domain is included in `--allow-domain`. Social profiles
+are considered only when linked from a verified company page, their hostname is
+included in `--allow-domain`, and the profile itself names the exact company or
+shows its labelled organisation number. This avoids treating search snippets,
+brand matches, or unverified profile links as company facts.
+
 All external HTML requests use public HTTPS hostnames, checked DNS addresses,
 TLS hostname verification, robots rules, response-size limits and shared
 per-host rate controls. Redirects are not followed. Fixture mode stays offline.

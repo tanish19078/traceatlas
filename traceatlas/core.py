@@ -67,15 +67,23 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
             return envelope(number, 'failed', 'time_budget_exhausted'), None
         arguments = (number, fixture_dir, min(timeout, max(0.1, remaining)))
         result, body = research(*arguments, bulk=bulk) if bulk is not None else research(*arguments)
+        snapshots = [(body, '.json')] if body is not None else []
+        if bulk is None and not fixture_dir and result['state'] == 'available':
+            from .accounts import enrich
+            account_body = enrich(result, min(timeout, max(0.1, remaining)))
+            if account_body is not None:
+                snapshots.append((account_body, '.json'))
         if allowed_domains and not fixture_dir and result['state'] == 'available':
             from .web import enrich
             pages = enrich(result, allowed_domains, min(started + budget, time.monotonic() + timeout))
-            body = [(body, '.json')] + pages
+            snapshots.extend(pages)
         if legal_sources and result['state'] == 'available':
             from .legal import enrich_legal
             pages = enrich_legal(result, legal_sources.get(number, []), allowed_domains or [], min(started + budget, time.monotonic() + timeout))
-            body = (body if isinstance(body, list) else [(body, '.json')]) + pages
-        return result, body
+            snapshots.extend(pages)
+        from .models import company_summary
+        result['summary'] = company_summary(result)
+        return result, snapshots or None
     def measured_task(number, index):
         began = time.monotonic()
         began_at = now()
