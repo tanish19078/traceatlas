@@ -61,7 +61,13 @@ class AuditHardeningTests(unittest.TestCase):
             core.run_batch([ORG],folder)
             path=next((Path(folder)/'snapshots').glob('*.json'))
             original=Path(folder)/'elsewhere.json';original.write_bytes(path.read_bytes())
-            path.unlink();path.symlink_to(original)
+            path.unlink()
+            try:
+                path.symlink_to(original)
+            except OSError as exc:
+                if getattr(exc,'winerror',None)==1314:
+                    self.skipTest('Windows symlink privilege is unavailable')
+                raise
             self.assertFalse(verify(folder)['passed'])
 
     def test_nonfinite_numbers_cannot_be_serialized_as_evidence(self):
