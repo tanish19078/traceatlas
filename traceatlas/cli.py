@@ -20,6 +20,7 @@ def main(argv=None):
     parser.add_argument('--max-requests', type=int, help='Lower the shared request cap (at most 20 per input company)')
     parser.add_argument('--timeout', type=float, default=12)
     parser.add_argument('--allow-domain', action='append', default=[], help='Reviewed public website hostname; enables opt-in website research (repeatable)')
+    parser.add_argument('--discover-websites', action='store_true', help='Probe up to two name/town-derived .no domains when no registry website is listed; obey robots.txt and publish only exact company matches')
     parser.add_argument('--legal-sources', help='Reviewed JSON map of company numbers to news/filing URLs; also requires --allow-domain')
     parser.add_argument('--resume', action='store_true', help='Reuse evidence-checked terminal results from the same batch; retry failed/blocked inputs')
     args = parser.parse_args(argv)
@@ -56,7 +57,7 @@ def main(argv=None):
             command = [sys.executable, '-m', 'traceatlas', *(sys.argv[1:] if argv is None else argv), '--internal-worker', '--run-id', run_id]
             return supervise(command, numbers, args.output, args.budget_seconds, run_id, 'fixture' if args.fixtures else 'bulk' if args.bulk else 'live')
         report = run_batch(numbers, args.output, args.fixtures,
-                           args.workers, args.budget_seconds, args.timeout, domains, args.resume, legal_sources, args.bulk, args.max_requests, args.run_id)
+                           args.workers, args.budget_seconds, args.timeout, domains, args.resume, legal_sources, args.bulk, args.max_requests, args.run_id, args.discover_websites)
     except (OSError, ValueError, csv.Error) as exc:
         parser.error(str(exc))
     print(json.dumps(report, indent=2))

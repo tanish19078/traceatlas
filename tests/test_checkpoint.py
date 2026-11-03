@@ -42,9 +42,9 @@ class CheckpointTests(unittest.TestCase):
     def test_changed_input_or_allowlist_is_refused_before_fetch(self):
         core.run_batch([ORG],self.root)
         self.fetch.reset_mock()
-        for inputs,domains in [([ORG,ORG],None),([ORG],['example.com'])]:
+        for inputs,domains,discover in [([ORG,ORG],None,False),([ORG],['example.com'],False),([ORG],None,True)]:
             with self.assertRaisesRegex(ValueError,'configuration_changed'):
-                core.run_batch(inputs,self.root,allowed_domains=domains,resume=True)
+                core.run_batch(inputs,self.root,allowed_domains=domains,resume=True,discover_websites=discover)
         self.fetch.assert_not_called()
 
     def test_tampered_snapshot_cannot_be_reused(self):

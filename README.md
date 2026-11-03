@@ -72,6 +72,19 @@ To check a website supplied by the registry:
 python -m traceatlas --input companies.txt --output runs/web --allow-domain company.example.com --timeout 20
 ```
 
+For live batches where the registry has no website, opt in to two `.no` domain
+probes derived from the registered name and town:
+
+```bash
+python -m traceatlas --input companies.txt --output runs/discovery --discover-websites --timeout 20
+```
+
+The crawler honors each candidate site's `robots.txt`, checks public DNS and
+HTTPS, and keeps a candidate only when a page proves the exact registered name
+or labelled organisation number. It follows social links only from that verified
+site and applies the same identity check to each profile. The option uses
+deterministic domain guesses rather than scraping search-engine result pages.
+
 Accepted pages must show the exact legal name and labelled organisation number.
 Pages with multiple labelled company numbers or conflicting owner/publisher identities are rejected. A subsidiary in a group footer does not establish ownership. An explicit
 `legalName` takes precedence over a brand `name` when checking website owners
@@ -106,8 +119,8 @@ or failed lookup does not establish that a company has no legal cases.
 Live registry runs also retrieve annual accounts, registered roles, and
 sub-entities from Brønnøysundregistrene and archive each response. Revenue
 summaries compare matching company/consolidated report types and currencies across
-periods. Website pages are checked only when
-their registry-supplied domain is included in `--allow-domain`. Social profiles
+periods. Website pages are checked when their registry-supplied domain is in
+`--allow-domain`, or under the explicit `--discover-websites` option. Social profiles
 are considered only when linked from a verified company page, their hostname is
 included in `--allow-domain`, and the profile itself names the exact company or
 shows its labelled organisation number. This avoids treating search snippets,
@@ -194,8 +207,9 @@ and stored support, not the completeness of information found online.
 
 ## Current limits
 
-Open-web source discovery, broad leadership extraction, and PDF parsing are not
-implemented. Registered roles and operating sub-entities come from the public
+General search-engine discovery, broad leadership extraction, and PDF parsing
+are not implemented. Website discovery uses limited name/town domain guesses.
+Registered roles and operating sub-entities come from the public
 registry. Revenue trends use the official annual-accounts API where comparable
 periods are available. Legal research uses supplied reviewed URLs. Website and
 legal-source integration are tested with offline HTML fixtures; live website

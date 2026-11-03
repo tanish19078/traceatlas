@@ -28,7 +28,7 @@ def read_inputs(path):
     return numbers
 
 
-def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=12, allowed_domains=None, resume=False, legal_sources=None, bulk_path=None, max_requests=None, run_id=None):
+def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=12, allowed_domains=None, resume=False, legal_sources=None, bulk_path=None, max_requests=None, run_id=None, discover_websites=False):
     numbers = list(numbers)
     if not numbers or any(not isinstance(number, str) for number in numbers):
         raise ValueError('inputs must be a nonempty sequence of strings')
@@ -51,12 +51,12 @@ def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=
     bulk = BulkRegistry(bulk_path, numbers) if bulk_path else None
     from .checkpoint import output_lock
     with output_lock(root):
-        return _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources, bulk, ceiling if max_requests is None else max_requests, run_id)
+        return _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources, bulk, ceiling if max_requests is None else max_requests, run_id, discover_websites)
 
 
-def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources, bulk, max_requests, run_id):
+def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources, bulk, max_requests, run_id, discover_websites=False):
     from .checkpoint import prepare
-    recovered = prepare(root, numbers, fixture_dir, allowed_domains, resume, legal_sources, bulk.sha256 if bulk is not None else None)
+    recovered = prepare(root, numbers, fixture_dir, allowed_domains, resume, legal_sources, bulk.sha256 if bulk is not None else None, discover_websites)
     from .network import RequestBudget, request_scope
     request_budget = RequestBudget(max_requests, started + budget)
     run_started_at = now()
@@ -75,9 +75,10 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
                 snapshots.append((account_body, '.json'))
             from .registry_extra import enrich as enrich_registry_details
             snapshots.extend(enrich_registry_details(result, min(timeout, max(0.1, remaining))))
-        if allowed_domains and not fixture_dir and result['state'] == 'available':
+        if (allowed_domains or discover_websites) and not fixture_dir and result['state'] == 'available':
             from .web import enrich
-            pages = enrich(result, allowed_domains, min(started + budget, time.monotonic() + timeout))
+            deadline = min(started + budget, time.monotonic() + timeout)
+            pages = enrich(result, allowed_domains or [], deadline, discover=True) if discover_websites else enrich(result, allowed_domains or [], deadline)
             snapshots.extend(pages)
         if legal_sources and result['state'] == 'available':
             from .legal import enrich_legal
@@ -150,8 +151,8 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
                   'website_pages_verified': sum(r.get('website_research', {}).get('pages_verified', 0) for r in results),
                   'external_coverage_measured': False, 'official_score': None,
                   'external_api_cost_usd': 0, 'models': [],
-                  'limitations': ['Website and legal-source research is opt-in on reviewed allowlisted domains.',
-                                  'Automated open-web search and broad leadership coverage are not implemented; website and social research uses registry URLs and verified company-page links.',
+                  'limitations': ['Website research is opt-in through reviewed hostnames or limited name/town .no domain guesses; legal sources remain allowlisted.',
+                                  'Search-engine discovery and broad leadership coverage are not implemented; social research follows verified company-page links.',
                                   'Direct API calls use a soft deadline; the supervised CLI can stop stalled research workers.',
                                   'Not an official evaluation or qualification result.']}
         atomic_write(root / 'report.json', json.dumps(report, indent=2) + '\n')

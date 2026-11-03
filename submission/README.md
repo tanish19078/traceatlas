@@ -18,7 +18,7 @@ input, and the starter kit's `OUTPUT_CONTRACT.md`.
 Python 3.11–3.13; no package install, model keys or third-party runtime dependencies:
 
 ```bash
-python -m traceatlas --input /path/to/companies.jsonl --bulk /path/to/frozen-registry.csv --output runs/evaluation --workers 8 --budget-seconds 2700 --supervised --run-id official-run
+python -m traceatlas --input /path/to/companies.jsonl --bulk /path/to/frozen-registry.csv --output runs/evaluation --workers 8 --budget-seconds 2700 --discover-websites --supervised --run-id official-run
 ```
 
 Replace the paths and run ID with those supplied for the run. Omit `--bulk` only
