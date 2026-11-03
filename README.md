@@ -18,7 +18,7 @@ came from, when they were checked, and what is still unknown.
   number before accepting a reviewed company page.
 - **Structured jobs:** extracts attributed JSON-LD postings, checks employer
   identity and dates, and preserves the original record.
-- **Dated news:** accepts individual, visible articles about the exact company, with publication dates and source records.
+- **Dated news:** accepts individual, visible articles about the exact company, with publication dates and source records. It uses structured article data when present, or a single visible headline and article date when the company page has no article schema.
 - **Legal reporting:** fetches reviewed news or HTML filing URLs and preserves
   dated passages about legal proceedings, including case references when reported.
 - **Change history:** shows supported changes and keeps earlier evidence when a

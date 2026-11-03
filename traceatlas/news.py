@@ -3,7 +3,7 @@ import re
 from urllib.parse import urlsplit, parse_qs
 from .models import canonical, digest
 from .jobs import schema_nodes, parsed_date, normalized_name
-from .web import normalize_url, verify_site_owner, Document
+from .web import normalize_url, verify_site_owner, Document, ORG_PATTERN
 
 
 def extract_news(document, number, legal_name, source_url, evidence_id, retrieved_at):
@@ -18,6 +18,8 @@ def extract_news(document, number, legal_name, source_url, evidence_id, retrieve
     unique = {}
     for block, pointer, node in nodes:
         unique.setdefault(canonical(node), (block, pointer, node))
+    if not unique:
+        return _extract_visible_article(document, number, legal_name, source_url, evidence_id, retrieved_at)
     if len(unique) != 1:
         return []
     block, pointer, node = next(iter(unique.values()))
@@ -53,3 +55,35 @@ def extract_news(document, number, legal_name, source_url, evidence_id, retrieve
              'value':node,'evidence_id':evidence_id,'json_ld_block':block,'json_pointer':pointer,
              'reporting_period':None,'effective_date':node['datePublished'],
              'extraction_method':'json_ld_news_v1'}]
+
+
+def _extract_visible_article(document, number, legal_name, source_url, evidence_id, retrieved_at):
+    """Accept one dated, visibly attributed article when no NewsArticle schema exists."""
+    if len(document.article_texts) != 1 or len(document.article_headings) != 1:
+        return []
+    article = document.article_texts[0]
+    headline = document.article_headings[0]
+    if not 15 <= len(headline) <= 300 or normalized_name(headline) not in normalized_name(article) or len(article) < 80:
+        return []
+    normalized_article = normalized_name(article)
+    normalized_legal_name = normalized_name(legal_name)
+    names_article = re.search(r'(?<!\w)' + re.escape(normalized_legal_name) + r'(?!\w)', normalized_article)
+    numbers_article = any(re.sub(r'\D', '', match.group(1)) == number for match in ORG_PATTERN.finditer(article))
+    if not (names_article or numbers_article):
+        return []
+    if len(document.article_publication_dates) > 1:
+        return []
+    try:
+        dates = [parsed_date(value) for value in document.publication_dates + document.article_publication_dates]
+        if not dates or len(set(dates)) != 1:
+            return []
+        posted = dates[0]
+        if posted > parsed_date(retrieved_at):
+            return []
+    except (ValueError, TypeError):
+        return []
+    value = {'headline': headline, 'datePublished': posted.isoformat(), 'articleBody': article}
+    subject = 'news:' + source_url
+    return [{'id': digest((number + subject + canonical(value)).encode()), 'field': 'news', 'subject': subject,
+             'value': value, 'evidence_id': evidence_id, 'reporting_period': None,
+             'effective_date': posted.isoformat(), 'extraction_method': 'visible_html_news_v1'}]

@@ -114,7 +114,9 @@ class Document(HTMLParser):
         self.parts, self.links, self.hidden = [], [], 0
         self.json_ld, self.ld_buffer = [], None
         self.publication_dates = []
+        self.article_publication_dates = []
         self.headings, self.heading_parts, self.heading_tag = [], [], None
+        self.article_headings = []
         self.article_texts, self.article_parts, self.article_depth = [], [], 0
         self.feed(body.decode('utf-8', errors='replace'))
         self.text = ' '.join(' '.join(self.parts).split())
@@ -129,6 +131,8 @@ class Document(HTMLParser):
             self.article_depth += 1
         if tag == 'meta' and not self.hidden and (attributes.get('property') or attributes.get('name') or '').casefold() in ('article:published_time', 'datepublished'):
             self.publication_dates.append(attributes.get('content'))
+        if tag == 'time' and not self.hidden and self.article_depth and attributes.get('datetime'):
+            self.article_publication_dates.append(attributes['datetime'])
         if tag == 'script' and not self.hidden and (attributes.get('type') or '').casefold() == 'application/ld+json' and len(self.json_ld) < 100:
             self.ld_buffer = []
         if tag in ('script', 'style', 'noscript', 'template'):
@@ -140,7 +144,10 @@ class Document(HTMLParser):
 
     def handle_endtag(self, tag):
         if tag == self.heading_tag:
-            self.headings.append(' '.join(' '.join(self.heading_parts).split()))
+            heading = ' '.join(' '.join(self.heading_parts).split())
+            self.headings.append(heading)
+            if tag == 'h1' and self.article_depth:
+                self.article_headings.append(heading)
             self.heading_tag = None
         if tag == 'article' and self.article_depth:
             self.article_depth -= 1
