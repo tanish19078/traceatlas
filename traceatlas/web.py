@@ -407,8 +407,11 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
                 proof = verify_social_identity(social_doc, number, legal_name)
                 if not proof:
                     continue
-                verified_social.add(social_url)
                 key = hashlib.sha256(social_body).hexdigest()
+                if key in evidence_ids:
+                    continue
+                verified_social.add(social_url)
+                evidence_ids.add(key)
                 social_evidence = {'id': key, 'source_url': social_url, 'retrieved_at': datetime.now(timezone.utc).isoformat(),
                     'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
                     'source_class': 'verified_social_page', 'extractor_version': 'social_identity_v1',
