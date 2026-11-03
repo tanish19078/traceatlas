@@ -1,7 +1,7 @@
 """A group website and its vacancies cannot become a subsidiary's facts."""
 import json
 import unittest
-from traceatlas.web import Document, verify_site_owner
+from traceatlas.web import Document, extract_website_description, verify_site_owner
 from traceatlas.jobs import extract_jobs
 from tests.test_jobs import ORG,NAME,STAMP,DETAIL,DESCRIPTION,job,document,extract
 
@@ -18,6 +18,13 @@ class AttributionTests(unittest.TestCase):
         self.assertIsNotNone(verify_site_owner(self.owner_doc(owner),ORG,NAME))
     def test_conflicting_organization_taxid_rejected(self):
         self.assertIsNone(verify_site_owner(self.owner_doc({'@type':'Organization','name':NAME,'taxID':'974760673'}),ORG,NAME))
+
+    def test_company_site_description_requires_one_verified_description(self):
+        body=f'<h1>{NAME}</h1><p>Org nr {ORG}</p><meta name="description" content="We provide commercial plumbing and heating services across western Norway for homes and businesses.">'
+        claims=extract_website_description(Document(body.encode()),ORG,NAME,'https://example.com/','evidence')
+        self.assertEqual(len(claims),1)
+        conflict=body + '<meta property="og:description" content="A different business description that conflicts with the first page summary.">'
+        self.assertEqual(extract_website_description(Document(conflict.encode()),ORG,NAME,'https://example.com/','evidence'),[])
     def test_job_listing_homepage_and_search_are_not_single_ads(self):
         for url in ['https://example.com/','https://example.com/careers','https://example.com/jobs?q=engineer']:
             self.assertEqual(extract_jobs(document(job(url=url)),ORG,NAME,url,'key',STAMP),[])

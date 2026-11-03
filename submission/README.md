@@ -55,7 +55,8 @@ unseen registry domains.
   and tax identifiers participate in the owner check. Each child page
   is checked independently; no parent social accounts are propagated. The
   crawler prioritizes company news links and follows a news index to its story
-  links within a five-page same-host limit.
+  links within a five-page same-host limit. A single consistent homepage
+  description is included in the summary only after site ownership verifies.
 - A job requires one distinct JobPosting on an individual page, a matching ad
   URL, an exact employer, a dated record and a description present in visible
   HTML. Root, careers and search/listing pages are rejected.
@@ -134,7 +135,7 @@ Python uses the PSF licence and bundled notices. Build-only setuptools 84.0.0
 uses MIT; checkout/setup-python are pinned official action releases. TraceAtlas
 remains author-owned public code without an asserted general reuse licence.
 
-The 147 offline tests include bulk parsing/provenance, contract integrity,
+The 150 offline tests include bulk parsing/provenance, contract integrity,
 concurrent request caps, Retry-After, parent attribution, article/job validation,
 refresh, resume and worker termination; one Windows symlink test is skipped
 when the runner lacks symlink privilege. The documented 100-company offline

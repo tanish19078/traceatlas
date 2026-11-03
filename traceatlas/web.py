@@ -130,6 +130,7 @@ class Document(HTMLParser):
         self.parts, self.links, self.hidden = [], [], 0
         self.json_ld, self.ld_buffer = [], None
         self.publication_dates = []
+        self.site_descriptions = []
         self.article_publication_dates = []
         self.headings, self.heading_parts, self.heading_tag = [], [], None
         self.article_headings = []
@@ -147,6 +148,10 @@ class Document(HTMLParser):
             self.article_depth += 1
         if tag == 'meta' and not self.hidden and (attributes.get('property') or attributes.get('name') or '').casefold() in ('article:published_time', 'datepublished'):
             self.publication_dates.append(attributes.get('content'))
+        if tag == 'meta' and not self.hidden:
+            key = (attributes.get('name') or attributes.get('property') or '').casefold()
+            if key in ('description', 'og:description', 'twitter:description'):
+                self.site_descriptions.append(attributes.get('content'))
         if tag == 'time' and not self.hidden and self.article_depth and attributes.get('datetime'):
             self.article_publication_dates.append(attributes['datetime'])
         if tag == 'script' and not self.hidden and (attributes.get('type') or '').casefold() == 'application/ld+json' and len(self.json_ld) < 100:
@@ -266,6 +271,23 @@ def verify_site_owner(document, number, legal_name):
     return proof
 
 
+def extract_website_description(document, number, legal_name, source_url, evidence_id):
+    if verify_site_owner(document, number, legal_name) is None:
+        return []
+    values = {' '.join(value.split()) for value in document.site_descriptions
+              if isinstance(value, str) and value.strip()}
+    if len(values) != 1:
+        return []
+    value = next(iter(values))
+    if not 40 <= len(value) <= 320 or normalize_name(value) == normalize_name(legal_name):
+        return []
+    subject = 'company_description:' + source_url
+    return [{'id': hashlib.sha256((number + subject + value).encode()).hexdigest(),
+             'field': 'company_description', 'subject': subject, 'value': value,
+             'evidence_id': evidence_id, 'reporting_period': None, 'effective_date': None,
+             'extraction_method': 'company_meta_description_v1'}]
+
+
 def verify_social_identity(document, number, legal_name):
     """Accept a public social profile only with an exact legal-name or org-number match."""
     text = document.text
@@ -282,7 +304,7 @@ def verify_social_identity(document, number, legal_name):
 
 
 class SiteSession:
-    def __init__(self, origin, deadline, request_limit=5, transport=get_page):
+    def __init__(self, origin, deadline, request_limit=6, transport=get_page):
         self.origin, self.deadline, self.limit, self.transport = origin, deadline, request_limit, transport
         self.requests, self.last_request = 0, 0.0
         host = urlsplit(origin).hostname
@@ -523,6 +545,13 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
                             'identity_span': page_proof, 'legal_name': legal_name, 'organisation_number': number, 'synthetic': False,
                             'access_policy': website_policy}
                 result['evidence'].append(evidence)
+                if page_url == url:
+                    descriptions = extract_website_description(page_doc, number, legal_name, page_url, key)
+                    result['claims'].extend(descriptions)
+                    result['availability']['company_description'] = {
+                        'state': 'available' if descriptions else 'not_available',
+                        **({} if descriptions else {'reason': 'no_unambiguous_homepage_description'}),
+                    }
                 from .jobs import extract_jobs
                 jobs = extract_jobs(page_doc, number, legal_name, page_url, key, retrieved_at)
                 result['claims'].extend(jobs)

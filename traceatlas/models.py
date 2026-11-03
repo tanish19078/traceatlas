@@ -15,7 +15,7 @@ FIELDS = {
     'business_activity': 'aktivitet', 'bankrupt': 'konkurs',
     'in_liquidation': 'underAvvikling',
 }
-EXTERNAL = ['website_identity', 'leadership', 'locations', 'financials', 'jobs', 'news', 'legal_cases']
+EXTERNAL = ['website_identity', 'company_description', 'leadership', 'locations', 'financials', 'jobs', 'news', 'legal_cases']
 
 
 def now():
@@ -71,6 +71,9 @@ def company_summary(result):
         activity = '; '.join(item for item in activity if isinstance(item, str))
     if isinstance(activity, str) and activity.strip():
         parts.append(activity.strip())
+    website_description = claims.get('company_description')
+    if isinstance(website_description, str) and website_description.strip():
+        parts.append('Company website: ' + website_description.strip())
     industry = claims.get('industry')
     if isinstance(industry, dict):
         industry = industry.get('beskrivelse') or industry.get('kode')

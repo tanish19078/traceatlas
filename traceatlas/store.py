@@ -50,7 +50,7 @@ class Store:
             current = {c.get('subject', c['field']) for c in result['claims']}
             historical = prior.get('last_known', {}).get('claims', []) + prior['claims']
             stale = {c.get('subject', c['field']): c for c in historical
-                     if c['field'] in ('website_identity', 'company_page', 'social_pages', 'leadership', 'locations', 'financials', 'jobs', 'legal_cases', 'news')
+                     if c['field'] in ('website_identity', 'company_page', 'company_description', 'social_pages', 'leadership', 'locations', 'financials', 'jobs', 'legal_cases', 'news')
                      and c.get('subject', c['field']) not in current}
             if stale:
                 evidence = {e['id']: e for e in prior['evidence'] + prior.get('last_known', {}).get('evidence', [])}

@@ -97,6 +97,16 @@ class WebsiteTests(unittest.TestCase):
             session.page(URL)
         self.assertEqual(transport.call_count,1)
 
+    def test_site_session_allows_robots_plus_five_verified_pages(self):
+        def transport(url,deadline):
+            return (404,'text/plain',b'') if url.endswith('/robots.txt') else (200,'text/html',PAGE)
+        session=w.SiteSession(URL,time.monotonic()+30,transport=transport)
+        for _ in range(5):
+            session.page(URL)
+        self.assertEqual(session.requests,6)
+        with self.assertRaisesRegex(w.AccessError,'request_budget'):
+            session.page(URL)
+
     def test_workers_share_host_pacing_gate(self):
         transport = MagicMock(return_value=(404,'text/plain',b''))
         one = w.SiteSession(URL,time.monotonic()+10,transport=transport)
@@ -166,6 +176,28 @@ class WebsiteTests(unittest.TestCase):
 
 
 class WebsiteIntegrationTests(unittest.TestCase):
+    def test_company_site_description_flows_to_summary_and_audit(self):
+        import tempfile
+        import json
+        from pathlib import Path
+        from traceatlas.audit import verify
+        class Described(FakeSession):
+            def page(self,url):
+                if url == URL:
+                    return f'<h1>SYNTHETIC TEST COMPANY</h1><p>Org nr {ORG}</p><meta name="description" content="We provide commercial plumbing and heating services across western Norway for homes and businesses."><a href="/contact">Contact</a>'.encode()
+                return PAGE
+        enrich=w.enrich
+        with tempfile.TemporaryDirectory() as folder, patch.object(registry,'fetch',return_value=fixture(hjemmeside=HOST)), patch.object(w,'enrich',side_effect=lambda row,domains,deadline: enrich(row,domains,deadline,Described)):
+            t.run_batch([ORG],folder,allowed_domains=[HOST])
+            row=json.loads((Path(folder)/'profiles.jsonl').read_text())
+            self.assertIn('Company website: We provide commercial plumbing',row['summary'])
+            self.assertIn('HTML meta description',(Path(folder)/'index.html').read_text())
+            self.assertTrue(verify(folder)['passed'])
+            claim=next(item for item in row['claims'] if item['field']=='company_description')
+            claim['value']='Fabricated company activity.'
+            (Path(folder)/'profiles.jsonl').write_text(json.dumps(row)+'\n')
+            self.assertFalse(verify(folder)['passed'])
+
     def test_batch_saves_and_audits_html_and_rejects_tampering(self):
         import tempfile
         from pathlib import Path

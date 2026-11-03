@@ -31,6 +31,7 @@ class RegistryDetailTests(unittest.TestCase):
 
     def test_summary_compares_same_report_type_and_currency(self):
         result = {'legal_identity': {'name': 'Example AS'}, 'claims': [
+            {'field': 'company_description', 'value': 'We design and build energy efficient commercial properties in Oslo.'},
             {'field': 'financials', 'value': {'period_end': '2025-12-31', 'revenue': 120,
              'currency': 'NOK', 'report_type': 'SELSKAP'}},
             {'field': 'financials', 'value': {'period_end': '2024-12-31', 'revenue': 100,
@@ -38,7 +39,9 @@ class RegistryDetailTests(unittest.TestCase):
             {'field': 'financials', 'value': {'period_end': '2025-12-31', 'revenue': 300,
              'currency': 'NOK', 'report_type': 'KONSERN'}},
         ]}
-        self.assertIn('up 20.0% year over year', company_summary(result))
+        summary = company_summary(result)
+        self.assertIn('up 20.0% year over year', summary)
+        self.assertIn('Company website: We design and build energy efficient commercial properties in Oslo.', summary)
 
     def test_site_can_match_exact_legal_name_without_a_registry_number(self):
         document = Document(b'<html><h1>Example AS</h1><p>Local services in Oslo.</p></html>')

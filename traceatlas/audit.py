@@ -115,6 +115,11 @@ def validate_result(result, root, historical=False):
                 supported = extract_report(document, result['organisation_number'], legal_name, item['source_url'], key, item['retrieved_at'], kind, legacy=claim['extraction_method'] == 'legal_report_v1')
                 require(claim == supported and item['extractor_version'] == claim['extraction_method'] and claim['extraction_method'] in ('legal_report_v1', 'legal_report_v2'), 'unsupported legal source report')
                 value = claim['value']
+            elif claim['extraction_method'] == 'company_meta_description_v1':
+                from .web import extract_website_description
+                supported = extract_website_description(document, result['organisation_number'], legal_name, item['source_url'], key)
+                require(claim in supported, 'unsupported company website description')
+                value = claim['value']
             elif claim['extraction_method'] in ('json_ld_news_v1', 'visible_html_news_v1'):
                 from .news import extract_news
                 supported = extract_news(document, result['organisation_number'], legal_name, item['source_url'], key, item['retrieved_at'])

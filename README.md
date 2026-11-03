@@ -15,7 +15,8 @@ came from, when they were checked, and what is still unknown.
 - **Registry research:** legal identity, registered address, industry, business
   activity, registered employee counts and status, where the registry reports them.
 - **Website verification:** checks the exact legal name and labelled organisation
-  number before accepting a reviewed company page.
+  number before accepting a reviewed company page, then uses a consistent,
+  company-authored homepage description in the summary when one is available.
 - **Structured jobs:** extracts attributed JSON-LD postings, checks employer
   identity and dates, and preserves the original record.
 - **Dated news:** accepts individual, visible articles about the exact company, with publication dates and source records. It uses structured article data when present, or a single visible headline and article date when the company page has no article schema.
@@ -27,10 +28,11 @@ came from, when they were checked, and what is still unknown.
   configuration and saved evidence.
 - **Evidence auditing:** checks published values against archived source snapshots.
 
-Every claim has a source reference and retrieval date, plus a JSON pointer or
-text span you can inspect. Missing information stays missing; an unavailable
-employee count never becomes zero. Legal reports remain attributed reports,
-with no inferred liability or court outcome.
+Every claim has a source reference and retrieval date. Structured claims include
+a JSON pointer; visible text claims include an exact span; other page metadata
+is rechecked against its archived source during audit. Missing information stays
+missing; an unavailable employee count never becomes zero. Legal reports remain
+attributed reports, with no inferred liability or court outcome.
 
 ## Try it locally
 

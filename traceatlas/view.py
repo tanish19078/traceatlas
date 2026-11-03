@@ -23,6 +23,8 @@ def render(results, target):
             locator = ('JSON pointer: ' + esc(claim['json_pointer'])) if 'json_pointer' in claim else ('Text span: ' + esc(claim.get('text_span', 'missing')))
             if 'json_ld_block' in claim:
                 locator = 'JSON-LD block ' + esc(claim['json_ld_block']) + ' · Pointer: ' + esc(claim['json_pointer'] or '(root)')
+            elif claim.get('extraction_method') == 'company_meta_description_v1':
+                locator = 'HTML meta description'
             display_value = esc(canonical(claim['value']))
             if claim['field'] == 'jobs' and isinstance(claim['value'], dict):
                 posting = claim['value']
