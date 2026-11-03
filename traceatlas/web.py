@@ -187,7 +187,28 @@ def verify_identity(document, number, legal_name):
 
 def verify_site_owner(document, number, legal_name):
     """A subsidiary in a group's footer does not establish site ownership."""
+    page_numbers = {re.sub(r'\D', '', match.group(1)) for match in ORG_PATTERN.finditer(document.text)}
+    if page_numbers and page_numbers != {number}:
+        return None
     proof = verify_identity(document, number, legal_name)
+    if proof is None:
+        expected = normalize_name(legal_name)
+        for heading in document.headings:
+            if normalize_name(heading) == expected:
+                start = document.text.find(heading)
+                if start >= 0:
+                    proof = [start, start + len(heading)]
+                    break
+    if proof is None:
+        exact_name = r'\s+'.join(re.escape(part) for part in legal_name.split())
+        match = re.search(r'(?<!\w)' + exact_name + r'(?!\w)', document.text, re.I)
+        if match:
+            proof = [match.start(), match.end()]
+    if proof is None:
+        matches = list(ORG_PATTERN.finditer(document.text))
+        numbers = {re.sub(r'\D', '', match.group(1)) for match in matches}
+        if numbers == {number}:
+            proof = [matches[0].start(), matches[0].end()]
     if proof is None:
         return None
     from .jobs import schema_nodes
@@ -215,9 +236,7 @@ def verify_site_owner(document, number, legal_name):
                 return None
     else:
         headings = [normalize_name(value) for value in document.headings if value.strip()]
-        if headings and not any(value == name or value.endswith(' ' + name) for value in headings):
-            return None
-        if not headings and not normalize_name(document.text).startswith(name):
+        if any(re.search(r'\b(?:group|holding|konsern|konsernet)\b', heading) for heading in headings):
             return None
         if re.search(r'\b(?:group website|our subsidiaries|group companies|våre selskaper|konsernets nettside)\b', document.text, re.I):
             return None
@@ -309,31 +328,70 @@ class SiteSession:
         return body
 
 
-def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
-    """Research registry website candidates only on explicitly reviewed domains."""
+def _website_guesses(result):
+    import unicodedata
+    legal_name = result['legal_identity']['name']
+    words = normalize_name(legal_name).split()
+    words = [word for word in words if word not in {'as', 'asa', 'da', 'sa', 'nuf', 'ba'}]
+    address = next((claim['value'] for claim in result['claims'] if claim['field'] == 'registered_address'), {})
+    town = address.get('poststed') or address.get('kommune') if isinstance(address, dict) else ''
+    def slug(value):
+        normalized = unicodedata.normalize('NFKD', str(value).casefold().replace('æ', 'ae').replace('ø', 'o').replace('å', 'a'))
+        return ''.join(c for c in normalized if c.isascii() and c.isalnum())
+    name = slug(' '.join(words))
+    place = slug(town) if town else ''
+    hosts = ['www.' + name + '.no', name + '-' + place + '.no' if place else name + '.no']
+    return list(dict.fromkeys(host for host in hosts if 3 <= len(host) <= 253))[:2]
+
+
+def enrich(result, allowed_domains, deadline, session_factory=SiteSession, discover=False):
+    """Research registered sites, or make two opt-in Norwegian domain guesses."""
     blobs = []
     result['website_research'] = {'requests': 0, 'pages_verified': 0, 'errors': []}
     number = result['organisation_number']
     legal_name = result['legal_identity']['name']
+    website_policy = 'opt_in_website_research_and_robots' if discover else 'reviewed_domain_allowlist_and_robots'
+    social_policy = 'opt_in_verified_site_link_and_robots' if discover else 'reviewed_domain_allowlist_and_robots'
     session = None
+    sessions = []
     social_requests = 0
+    failed_session_requests = 0
     try:
         candidates = [candidate for candidate in result['candidates'] if candidate['kind'] == 'website']
         if not candidates:
+            if discover:
+                candidates = [{'kind': 'website', 'value': host, 'status': 'discovered'} for host in _website_guesses(result)]
+                result['candidates'].extend(candidates)
+        if not candidates:
             return blobs
-        url = normalize_url(candidates[0]['value'])
+        verified = None
+        for candidate in candidates[:2]:
+            candidate_session = None
+            try:
+                candidate_url = normalize_url(candidate['value'])
+                candidate_host = urlsplit(candidate_url).hostname
+                if candidate_host not in allowed_domains and not discover:
+                    result['website_research']['errors'].append('domain_not_in_reviewed_allowlist')
+                    continue
+                candidate_session = session_factory(candidate_url, deadline)
+                sessions.append(candidate_session)
+                candidate_body = candidate_session.page(candidate_url)
+                candidate_doc = Document(candidate_body)
+                candidate_proof = verify_site_owner(candidate_doc, number, legal_name)
+                if candidate_proof:
+                    candidate['status'] = 'verified'
+                    verified = (candidate_url, candidate_body, candidate_doc, candidate_proof, candidate_session)
+                    break
+                candidate['status'] = 'rejected'
+            except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
+                if candidate_session is None:
+                    failed_session_requests += getattr(exc, 'requests', 0)
+                result['website_research']['errors'].append(str(exc) if isinstance(exc, AccessError) else type(exc).__name__)
+        if not verified:
+            result['availability']['website_identity'] = {'state': 'ambiguous' if sessions else 'not_available', 'reason': 'exact_entity_proof_not_found' if sessions else 'website_candidate_unavailable'}
+            return blobs
+        url, body, document, proof, session = verified
         host = urlsplit(url).hostname
-        if host not in allowed_domains:
-            result['website_research']['errors'].append('domain_not_in_reviewed_allowlist')
-            return blobs
-        session = session_factory(url, deadline)
-        body = session.page(url)
-        document = Document(body)
-        proof = verify_site_owner(document, number, legal_name)
-        if not proof:
-            result['availability']['website_identity'] = {'state': 'ambiguous', 'reason': 'exact_entity_proof_not_found'}
-            return blobs
-        candidates[0]['status'] = 'verified'
         pages = [(url, body, document, proof)]
         seen = {url}
         for href in document.links:
@@ -367,7 +425,7 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
                         'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
                         'source_class': 'verified_company_website', 'extractor_version': 'visible_text_v2',
                         'identity_span': page_proof, 'legal_name': legal_name, 'organisation_number': number, 'synthetic': False,
-                        'access_policy': 'reviewed_domain_allowlist_and_robots'}
+                        'access_policy': website_policy}
             result['evidence'].append(evidence)
             from .jobs import extract_jobs
             jobs = extract_jobs(page_doc, number, legal_name, page_url, key, evidence['retrieved_at'])
@@ -394,15 +452,18 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
         for href in social_links:
             if len(verified_social) >= 3:
                 break
+            candidate_session = None
+            counted_requests = False
             try:
                 social_url = normalize_url(urljoin(url, href))
                 social_host = urlsplit(social_url).hostname
                 root_host = social_host[4:] if social_host.startswith('www.') else social_host
-                if root_host not in SOCIAL_HOSTS or social_host not in allowed_domains or social_url in verified_social:
+                if root_host not in SOCIAL_HOSTS or (social_host not in allowed_domains and not discover) or social_url in verified_social:
                     continue
                 candidate_session = session_factory(social_url, deadline)
                 social_body = candidate_session.page(social_url)
                 social_requests += candidate_session.requests
+                counted_requests = True
                 social_doc = Document(social_body)
                 proof = verify_social_identity(social_doc, number, legal_name)
                 if not proof:
@@ -416,7 +477,7 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
                     'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
                     'source_class': 'verified_social_page', 'extractor_version': 'social_identity_v1',
                     'identity_span': proof, 'legal_name': legal_name, 'organisation_number': number,
-                    'synthetic': False, 'access_policy': 'reviewed_domain_allowlist_and_robots'}
+                    'synthetic': False, 'access_policy': social_policy}
                 result['evidence'].append(social_evidence)
                 result['claims'].append({'id': hashlib.sha256((number + 'social_pages' + social_url).encode()).hexdigest(),
                     'field': 'social_pages', 'subject': 'social_pages:' + social_url, 'value': social_url,
@@ -424,7 +485,11 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
                     'effective_date': None, 'extraction_method': 'social_identity_v1'})
                 result['availability']['social_pages'] = {'state': 'available'}
                 blobs.append((social_body, '.html'))
-            except (AccessError, OSError, ValueError, http.client.HTTPException):
+            except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
+                if candidate_session is None:
+                    failed_session_requests += getattr(exc, 'requests', 0)
+                elif not counted_requests:
+                    social_requests += candidate_session.requests
                 continue
         from .models import company_summary
         result['summary'] = company_summary(result)
@@ -436,6 +501,5 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
         result['website_research']['errors'].append(type(exc).__name__)
         result['website_research']['requests'] = getattr(exc, 'requests', 0)
     finally:
-        if session:
-            result['website_research']['requests'] = session.requests + social_requests
+        result['website_research']['requests'] = sum(item.requests for item in sessions) + social_requests + failed_session_requests
     return blobs

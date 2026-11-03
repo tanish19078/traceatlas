@@ -132,6 +132,18 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(row['availability']['website_identity']['state'],'ambiguous')
         self.assertEqual(len(row['evidence']),1)
 
+    def test_opt_in_name_domain_probe_requires_exact_identity(self):
+        class Discovered(FakeSession):
+            def page(self, url):
+                return b'<h1>SYNTHETIC TEST COMPANY</h1><p>Local company details.</p>'
+        with patch.object(registry, 'fetch', return_value=fixture(hjemmeside='')):
+            row = t.research(ORG)[0]
+        blobs = w.enrich(row, [], time.monotonic()+10, Discovered, discover=True)
+        self.assertEqual(len(blobs), 1)
+        self.assertEqual(row['candidates'][0]['value'], 'www.synthetictestcompany.no')
+        self.assertEqual(row['candidates'][0]['status'], 'verified')
+        self.assertEqual(row['availability']['website_identity']['state'], 'available')
+
     def test_unverified_child_does_not_inherit_root_identity(self):
         class Child(FakeSession):
             def page(self,url):

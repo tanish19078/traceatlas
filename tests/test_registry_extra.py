@@ -1,6 +1,7 @@
 import unittest
 from traceatlas.registry_extra import extract_locations, extract_roles
 from traceatlas.models import company_summary
+from traceatlas.web import Document, _website_guesses, verify_site_owner
 
 ORG = '923609016'
 
@@ -38,6 +39,19 @@ class RegistryDetailTests(unittest.TestCase):
              'currency': 'NOK', 'report_type': 'KONSERN'}},
         ]}
         self.assertIn('up 20.0% year over year', company_summary(result))
+
+    def test_site_can_match_exact_legal_name_without_a_registry_number(self):
+        document = Document(b'<html><h1>Example AS</h1><p>Local services in Oslo.</p></html>')
+        self.assertIsNotNone(verify_site_owner(document, ORG, 'Example AS'))
+
+    def test_site_can_match_exact_legal_name_in_visible_body_copy(self):
+        document = Document(b'<html><h1>Electrician in Sandnes</h1><p>Sandnes Elektriske AS</p></html>')
+        self.assertIsNotNone(verify_site_owner(document, ORG, 'Sandnes Elektriske AS'))
+
+    def test_website_guesses_use_registered_name_and_town(self):
+        result = {'legal_identity': {'name': 'Example AS'}, 'claims': [
+            {'field': 'registered_address', 'value': {'poststed': 'Oslo'}}]}
+        self.assertEqual(_website_guesses(result), ['www.example.no', 'example-oslo.no'])
 
 
 if __name__ == '__main__':
