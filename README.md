@@ -103,9 +103,10 @@ an unambiguous publication date. It saves the HTML, supporting passage, dates
 and source kind. The explorer labels these items **source report only**. An empty
 or failed lookup does not establish that a company has no legal cases.
 
-Live registry runs also retrieve annual accounts from Brønnøysundregistrene and
-archive the response. Revenue summaries compare matching company/consolidated
-report types and currencies across periods. Website pages are checked only when
+Live registry runs also retrieve annual accounts, registered roles, and
+sub-entities from Brønnøysundregistrene and archive each response. Revenue
+summaries compare matching company/consolidated report types and currencies across
+periods. Website pages are checked only when
 their registry-supplied domain is included in `--allow-domain`. Social profiles
 are considered only when linked from a verified company page, their hostname is
 included in `--allow-domain`, and the profile itself names the exact company or
@@ -194,7 +195,8 @@ and stored support, not the completeness of information found online.
 ## Current limits
 
 Open-web source discovery, broad leadership extraction, and PDF parsing are not
-implemented. Revenue trends use the official annual-accounts API where comparable
+implemented. Registered roles and operating sub-entities come from the public
+registry. Revenue trends use the official annual-accounts API where comparable
 periods are available. Legal research uses supplied reviewed URLs. Website and
 legal-source integration are tested with offline HTML fixtures; live website
 retrieval remains subject to reviewed domain allowlists.

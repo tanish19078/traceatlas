@@ -36,8 +36,8 @@ def validate_result(result, root, historical=False):
         require(isinstance(key, str) and len(key) == 64 and all(c in '0123456789abcdef' for c in key), 'invalid snapshot hash')
         require(item['id'] == key, 'evidence id/hash mismatch')
         source_class = item['source_class']
-        require(source_class in ('official_registry', 'official_accounts', 'verified_company_website', 'verified_social_page', 'legal_news_report', 'legal_filing_report'), 'unknown source class')
-        suffix = '.json' if source_class in ('official_registry', 'official_accounts') else '.html'
+        require(source_class in ('official_registry', 'official_accounts', 'official_registry_roles', 'official_registry_locations', 'verified_company_website', 'verified_social_page', 'legal_news_report', 'legal_filing_report'), 'unknown source class')
+        suffix = '.json' if source_class in ('official_registry', 'official_accounts', 'official_registry_roles', 'official_registry_locations') else '.html'
         require(item['snapshot_path'] == 'snapshots/' + key + suffix, 'wrong snapshot path')
         path = root / 'snapshots' / (key + suffix)
         require(not path.is_symlink(), 'snapshot symlink rejected')
@@ -76,6 +76,19 @@ def validate_result(result, root, historical=False):
             require(item.get('extractor_version') == 'official_accounts_v1', 'unknown accounts extractor')
             supported = extract(json.loads(body), result['organisation_number'], key)
             require(claim in supported, 'unsupported annual accounts claim')
+            value = claim['value']
+        elif source_class in ('official_registry_roles', 'official_registry_locations'):
+            from .registry_extra import BASE as REGISTRY_BASE, extract_locations, extract_roles
+            expected_url = REGISTRY_BASE + ('enheter/' + result['organisation_number'] + '/roller' if source_class == 'official_registry_roles' else 'underenheter?overordnetEnhet=' + result['organisation_number'] + '&size=100')
+            require(item['source_url'] == expected_url, 'wrong registry detail source URL')
+            require(item.get('organisation_number') == result['organisation_number'], 'wrong registry detail identity')
+            if source_class == 'official_registry_roles':
+                require(item.get('extractor_version') == 'brreg_roles_v1', 'unknown roles extractor')
+                supported = extract_roles(json.loads(body), result['organisation_number'], key)
+            else:
+                require(item.get('extractor_version') == 'brreg_subunits_v1', 'unknown locations extractor')
+                supported = extract_locations(json.loads(body), result['organisation_number'], key)
+            require(claim in supported, 'unsupported registry detail claim')
             value = claim['value']
         elif source_class == 'verified_social_page':
             from .web import Document, normalize_url, verify_social_identity

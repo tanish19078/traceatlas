@@ -122,8 +122,8 @@ The 128 offline tests include bulk parsing/provenance, contract integrity,
 concurrent request caps, Retry-After, parent attribution, article/job validation,
 refresh, resume and worker termination. Registry and annual-account retrieval
 were checked on a three-company live sample; live website retrieval remains
-unvalidated in this environment. Annual-account revenue trends are extracted
-from the official accounts API; open-web source discovery, broad leadership
-coverage and PDF extraction remain incomplete. No official score,
+unvalidated in this environment. Annual-account revenue, registered roles and
+sub-entities are extracted from official registry APIs. Open-web source discovery,
+broad leadership coverage and PDF extraction remain incomplete. No official score,
 recall measurement or qualification is claimed. The organizer must accept and
 run the revised exact commit before it changes the entry of record.

@@ -73,6 +73,8 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
             account_body = enrich(result, min(timeout, max(0.1, remaining)))
             if account_body is not None:
                 snapshots.append((account_body, '.json'))
+            from .registry_extra import enrich as enrich_registry_details
+            snapshots.extend(enrich_registry_details(result, min(timeout, max(0.1, remaining))))
         if allowed_domains and not fixture_dir and result['state'] == 'available':
             from .web import enrich
             pages = enrich(result, allowed_domains, min(started + budget, time.monotonic() + timeout))
@@ -149,7 +151,7 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
                   'external_coverage_measured': False, 'official_score': None,
                   'external_api_cost_usd': 0, 'models': [],
                   'limitations': ['Website and legal-source research is opt-in on reviewed allowlisted domains.',
-                                  'Automated open-web search and leadership extraction are not implemented; website and social research uses registry URLs and verified company-page links.',
+                                  'Automated open-web search and broad leadership coverage are not implemented; website and social research uses registry URLs and verified company-page links.',
                                   'Direct API calls use a soft deadline; the supervised CLI can stop stalled research workers.',
                                   'Not an official evaluation or qualification result.']}
         atomic_write(root / 'report.json', json.dumps(report, indent=2) + '\n')

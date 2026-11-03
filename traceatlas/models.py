@@ -76,6 +76,12 @@ def company_summary(result):
         industry = industry.get('beskrivelse') or industry.get('kode')
     if isinstance(industry, str) and industry.strip() and industry.casefold() not in ' '.join(parts).casefold():
         parts.append('Industry: ' + industry.strip())
+    leaders = [claim['value'] for claim in result.get('claims', []) if claim['field'] == 'leadership' and isinstance(claim.get('value'), dict)]
+    if leaders:
+        parts.append('Registered leadership: ' + '; '.join(item['name'] + ' (' + item['role'] + ')' for item in leaders[:3]))
+    locations = [claim['value'] for claim in result.get('claims', []) if claim['field'] == 'locations' and isinstance(claim.get('value'), dict)]
+    if locations:
+        parts.append(str(len(locations)) + ' registered operating ' + ('location' if len(locations) == 1 else 'locations'))
     news = [claim['value'] for claim in result.get('claims', []) if claim['field'] == 'news' and isinstance(claim.get('value'), dict)]
     dated_news = sorted(news, key=lambda item: str(item.get('datePublished', '')), reverse=True)
     if dated_news:
