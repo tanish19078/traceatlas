@@ -15,19 +15,24 @@ input, and the starter kit's `OUTPUT_CONTRACT.md`.
 
 ## Run command
 
-Python 3.11–3.13; no package install, model keys or third-party runtime dependencies:
-set `BRAVE_SEARCH_API_KEY` to enable search discovery, which makes one billed API
-query and up to one social-focused follow-up per input company. The command below enables it; remove the flag to use
-only registry and name-derived domain discovery.
+Python 3.11–3.13; no package install, model key, or paid service is required for
+the standard run. It uses the live public registry and deterministic company
+website discovery. The optional Brave integration requires an approved
+`BRAVE_SEARCH_API_KEY` and makes one billed query with at most one
+social-focused follow-up per company.
 
 ```bash
-python -m traceatlas --input /path/to/companies.jsonl --bulk /path/to/frozen-registry.csv --output runs/evaluation --workers 8 --budget-seconds 2700 --search-websites --supervised --run-id official-run
+python -m traceatlas --input /path/to/companies.jsonl --output runs/evaluation --workers 8 --budget-seconds 2700 --discover-websites --supervised --run-id official-run
 ```
 
 Replace the paths and run ID with those supplied for the run. Omit `--bulk` only
 when live registry lookup is intended. `--output` is a directory. The contract
 result is **`runs/evaluation/envelopes.jsonl`**; native profiles, snapshots, history,
 HTML explorer and `report.json` are kept alongside it.
+
+Add `--bulk /path/to/frozen-registry.csv` only when the evaluator supplies a
+frozen registry file. Add `--search-websites` only when the evaluator supplies
+an approved reproducible Brave credential; never use a personal account key.
 
 The input accepts text or JSONL organisation numbers. Frozen data supports Brreg
 CSV (comma or semicolon separated) or API-shaped JSONL; gzip is detected by its
