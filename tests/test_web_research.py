@@ -144,6 +144,18 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(row['candidates'][0]['status'], 'verified')
         self.assertEqual(row['availability']['website_identity']['state'], 'available')
 
+    def test_search_discovered_social_page_is_checked_without_a_website(self):
+        class Discovered(FakeSession):
+            def page(self, url):
+                return PAGE if 'facebook.com' in url else b'Unrelated company details'
+        with patch.object(registry, 'fetch', return_value=fixture(hjemmeside='')):
+            row = t.research(ORG)[0]
+        row['candidates'].append({'kind': 'social_page', 'value': 'https://www.facebook.com/example', 'status': 'discovered'})
+        blobs = w.enrich(row, [], time.monotonic()+10, Discovered, discover=True)
+        self.assertEqual(len(blobs), 1)
+        self.assertEqual(row['candidates'][0]['status'], 'verified')
+        self.assertEqual(row['availability']['social_pages']['state'], 'available')
+
     def test_unverified_child_does_not_inherit_root_identity(self):
         class Child(FakeSession):
             def page(self,url):

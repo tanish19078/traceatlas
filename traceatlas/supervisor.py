@@ -68,7 +68,9 @@ def supervise(command, numbers, output, seconds, run_id, source_mode):
             'duration_seconds':round(time.monotonic()-began,3),'contract_validation':validation,
             'requests':sum(row['operations']['requests'] for row in results),
             'request_count_scope':'lower bound from completed checkpoints; in-flight telemetry unavailable after termination',
-            'external_api_cost_usd':0,'official_score':None,
+            'search_queries':sum(row.get('search_research',{}).get('queries',0) for row in results),
+            'external_api_cost_usd':round(sum(row['operations'].get('third_party_cost_usd',0) for row in results),6),'official_score':None,
+            'external_api_cost_basis':'Brave Search current listed rate; credits and account-specific pricing are not reflected. Stopped runs count completed queries only.',
             'limitations':['Worker was stopped before the wall-clock budget to reserve finalization time.',
                            'Filesystem operations and final export are not preemptible.',
                            'Incomplete inputs are explicit failed envelopes, not inferred empty results.']}

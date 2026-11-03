@@ -28,7 +28,7 @@ def read_inputs(path):
     return numbers
 
 
-def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=12, allowed_domains=None, resume=False, legal_sources=None, bulk_path=None, max_requests=None, run_id=None, discover_websites=False):
+def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=12, allowed_domains=None, resume=False, legal_sources=None, bulk_path=None, max_requests=None, run_id=None, discover_websites=False, search_websites=False):
     numbers = list(numbers)
     if not numbers or any(not isinstance(number, str) for number in numbers):
         raise ValueError('inputs must be a nonempty sequence of strings')
@@ -38,6 +38,10 @@ def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=
         raise ValueError('bulk and fixtures are mutually exclusive')
     if legal_sources and fixture_dir:
         raise ValueError('fixture mode never requests legal sources')
+    if search_websites and fixture_dir:
+        raise ValueError('fixture mode never requests web search')
+    if search_websites and not os.environ.get('BRAVE_SEARCH_API_KEY', '').strip():
+        raise ValueError('BRAVE_SEARCH_API_KEY is required for web search')
     if run_id is not None and (not isinstance(run_id, str) or not run_id.strip() or len(run_id) > 128):
         raise ValueError('run_id must be a nonempty string up to 128 characters')
     run_id = run_id or 'traceatlas-' + uuid.uuid4().hex[:12]
@@ -51,12 +55,12 @@ def run_batch(numbers, output, fixture_dir=None, workers=4, budget=300, timeout=
     bulk = BulkRegistry(bulk_path, numbers) if bulk_path else None
     from .checkpoint import output_lock
     with output_lock(root):
-        return _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources, bulk, ceiling if max_requests is None else max_requests, run_id, discover_websites)
+        return _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources, bulk, ceiling if max_requests is None else max_requests, run_id, discover_websites, search_websites)
 
 
-def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources, bulk, max_requests, run_id, discover_websites=False):
+def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_domains, resume, started, legal_sources, bulk, max_requests, run_id, discover_websites=False, search_websites=False):
     from .checkpoint import prepare
-    recovered = prepare(root, numbers, fixture_dir, allowed_domains, resume, legal_sources, bulk.sha256 if bulk is not None else None, discover_websites)
+    recovered = prepare(root, numbers, fixture_dir, allowed_domains, resume, legal_sources, bulk.sha256 if bulk is not None else None, discover_websites, search_websites)
     from .network import RequestBudget, request_scope
     request_budget = RequestBudget(max_requests, started + budget)
     run_started_at = now()
@@ -75,10 +79,18 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
                 snapshots.append((account_body, '.json'))
             from .registry_extra import enrich as enrich_registry_details
             snapshots.extend(enrich_registry_details(result, min(timeout, max(0.1, remaining))))
-        if (allowed_domains or discover_websites) and not fixture_dir and result['state'] == 'available':
+        if search_websites and not fixture_dir and result['state'] == 'available':
+            from .search import discover_candidates
+            search_remaining = budget - (time.monotonic() - started)
+            discovery = discover_candidates(result, os.environ['BRAVE_SEARCH_API_KEY'], min(timeout, max(0.1, search_remaining)))
+            result['candidates'] = discovery
+        if (allowed_domains or discover_websites or search_websites) and not fixture_dir and result['state'] == 'available':
             from .web import enrich
             deadline = min(started + budget, time.monotonic() + timeout)
-            pages = enrich(result, allowed_domains or [], deadline, discover=True) if discover_websites else enrich(result, allowed_domains or [], deadline)
+            if discover_websites or search_websites:
+                pages = enrich(result, allowed_domains or [], deadline, discover=True)
+            else:
+                pages = enrich(result, allowed_domains or [], deadline)
             snapshots.extend(pages)
         if legal_sources and result['state'] == 'available':
             from .legal import enrich_legal
@@ -97,9 +109,10 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
                 result, body = envelope(number, 'failed', 'worker_' + type(exc).__name__), None
         result['run'] = {'run_id': run_id, 'started_at': began_at, 'completed_at': now(),
                          'terminal_status': 'failed' if result['state'] == 'failed' else 'completed'}
+        from .search import LIST_PRICE_USD_PER_QUERY
         result['operations'] = {'requests': request_budget.by_input.get(index, 0),
                                 'runtime_ms': round((time.monotonic() - began) * 1000, 3),
-                                'third_party_cost_usd': 0}
+                                'third_party_cost_usd': round(result.get('search_research', {}).get('successful_queries', 0) * LIST_PRICE_USD_PER_QUERY, 6)}
         return result, body
     results = [recovered.get(index) for index in range(len(numbers))]
     try:
@@ -149,10 +162,12 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
                   'legal_requests': sum(r.get('legal_research', {}).get('requests', 0) for i, r in enumerate(results) if i not in recovered),
                   'legal_reports': sum(r.get('legal_research', {}).get('reports_found', 0) for r in results),
                   'website_pages_verified': sum(r.get('website_research', {}).get('pages_verified', 0) for r in results),
+                  'search_queries': sum(r.get('search_research', {}).get('queries', 0) for r in results),
                   'external_coverage_measured': False, 'official_score': None,
-                  'external_api_cost_usd': 0, 'models': [],
-                  'limitations': ['Website research is opt-in through reviewed hostnames or limited name/town .no domain guesses; legal sources remain allowlisted.',
-                                  'Search-engine discovery and broad leadership coverage are not implemented; social research follows verified company-page links.',
+                  'external_api_cost_usd': round(sum(r.get('operations', {}).get('third_party_cost_usd', 0) for r in results), 6), 'models': [],
+                  'external_api_cost_basis': 'Brave Search current listed rate; credits and account-specific pricing are not reflected.',
+                  'limitations': ['Website research is opt-in through reviewed hostnames, limited name/town .no guesses, or Brave Search API candidates; legal sources remain allowlisted.',
+                                  'Search snippets are candidate discovery only. Company pages and social profiles require exact identity checks before publication.',
                                   'Direct API calls use a soft deadline; the supervised CLI can stop stalled research workers.',
                                   'Not an official evaluation or qualification result.']}
         atomic_write(root / 'report.json', json.dumps(report, indent=2) + '\n')

@@ -85,7 +85,7 @@ def get_page(url, deadline):
     conn = PinnedHTTPS(parsed.hostname, timeout=min(8, remaining), context=context)
     try:
         path = parsed.path + ('?' + parsed.query if parsed.query else '')
-        conn.request('GET', path, headers={'User-Agent': USER_AGENT + '/0.2 (+https://github.com/tanish19078/traceatlas)', 'Accept': 'text/html,text/plain', 'Accept-Encoding': 'identity'})
+        conn.request('GET', path, headers={'User-Agent': USER_AGENT + '/0.6 (+https://github.com/tanish19078/traceatlas)', 'Accept': 'text/html,text/plain', 'Accept-Encoding': 'identity'})
         response = conn.getresponse()
         if response.status == 429:
             from .network import rate_limited
@@ -344,25 +344,97 @@ def _website_guesses(result):
     return list(dict.fromkeys(host for host in hosts if 3 <= len(host) <= 253))[:2]
 
 
+def _enrich_social(result, links, base_url, allowed_domains, deadline, session_factory, discover, evidence_ids):
+    blobs = []
+    requests = failed_requests = 0
+    policy = 'opt_in_verified_site_or_search_result_and_robots' if discover else 'reviewed_domain_allowlist_and_robots'
+    seen = set()
+    candidates = [item for item in result.get('candidates', []) if item.get('kind') == 'social_page']
+    links.extend(item['value'] for item in candidates if isinstance(item.get('value'), str))
+    verified_count = 0
+    for href in links:
+        if verified_count >= 3:
+            break
+        candidate_session = None
+        counted_requests = False
+        try:
+            social_url = normalize_url(urljoin(base_url or '', href))
+            social_host = urlsplit(social_url).hostname
+            root_host = social_host[4:] if social_host.startswith('www.') else social_host
+            if root_host not in SOCIAL_HOSTS or (social_host not in allowed_domains and not discover) or social_url in seen:
+                continue
+            seen.add(social_url)
+            candidate_session = session_factory(social_url, deadline)
+            social_body = candidate_session.page(social_url)
+            requests += candidate_session.requests
+            counted_requests = True
+            social_doc = Document(social_body)
+            proof = verify_social_identity(social_doc, result['organisation_number'], result['legal_identity']['name'])
+            candidate = next((item for item in candidates if item.get('value') == social_url), None)
+            if not proof:
+                if candidate:
+                    candidate['status'] = 'rejected'
+                continue
+            key = hashlib.sha256(social_body).hexdigest()
+            if key in evidence_ids:
+                continue
+            evidence_ids.add(key)
+            verified_count += 1
+            if candidate:
+                candidate['status'] = 'verified'
+            else:
+                result.setdefault('candidates', []).append({
+                    'kind': 'social_page', 'value': social_url, 'status': 'verified',
+                    'discovery_source': 'company_website_link',
+                })
+            retrieved_at = datetime.now(timezone.utc).isoformat()
+            result['evidence'].append({
+                'id': key, 'source_url': social_url, 'retrieved_at': retrieved_at,
+                'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
+                'source_class': 'verified_social_page', 'extractor_version': 'social_identity_v1',
+                'identity_span': proof, 'legal_name': result['legal_identity']['name'],
+                'organisation_number': result['organisation_number'], 'synthetic': False,
+                'access_policy': policy,
+            })
+            result['claims'].append({
+                'id': hashlib.sha256((result['organisation_number'] + 'social_pages' + social_url).encode()).hexdigest(),
+                'field': 'social_pages', 'subject': 'social_pages:' + social_url, 'value': social_url,
+                'evidence_id': key, 'text_span': list(proof), 'reporting_period': None,
+                'effective_date': None, 'extraction_method': 'social_identity_v1',
+            })
+            result['availability']['social_pages'] = {'state': 'available'}
+            blobs.append((social_body, '.html'))
+        except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
+            if candidate_session is None:
+                failed_requests += getattr(exc, 'requests', 0)
+            elif not counted_requests:
+                requests += candidate_session.requests
+            candidate = next((item for item in candidates if item.get('value') == href), None)
+            if candidate:
+                candidate['status'] = 'rejected'
+    return blobs, requests + failed_requests
+
+
 def enrich(result, allowed_domains, deadline, session_factory=SiteSession, discover=False):
-    """Research registered sites, or make two opt-in Norwegian domain guesses."""
+    """Verify company sites and linked or search-discovered social profiles."""
     blobs = []
     result['website_research'] = {'requests': 0, 'pages_verified': 0, 'errors': []}
     number = result['organisation_number']
     legal_name = result['legal_identity']['name']
     website_policy = 'opt_in_website_research_and_robots' if discover else 'reviewed_domain_allowlist_and_robots'
-    social_policy = 'opt_in_verified_site_link_and_robots' if discover else 'reviewed_domain_allowlist_and_robots'
     session = None
     sessions = []
     social_requests = 0
     failed_session_requests = 0
     try:
         candidates = [candidate for candidate in result['candidates'] if candidate['kind'] == 'website']
+        social_links = []
         if not candidates:
             if discover:
                 candidates = [{'kind': 'website', 'value': host, 'status': 'discovered'} for host in _website_guesses(result)]
                 result['candidates'].extend(candidates)
-        if not candidates:
+        social_candidates = [item for item in result.get('candidates', []) if item.get('kind') == 'social_page']
+        if not candidates and not social_candidates:
             return blobs
         verified = None
         for candidate in candidates[:2]:
@@ -389,108 +461,66 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
                 result['website_research']['errors'].append(str(exc) if isinstance(exc, AccessError) else type(exc).__name__)
         if not verified:
             result['availability']['website_identity'] = {'state': 'ambiguous' if sessions else 'not_available', 'reason': 'exact_entity_proof_not_found' if sessions else 'website_candidate_unavailable'}
-            return blobs
-        url, body, document, proof, session = verified
-        host = urlsplit(url).hostname
-        pages = [(url, body, document, proof)]
-        seen = {url}
-        for href in document.links:
-            if len(seen) >= 5:
-                break
-            if len(pages) >= 3:
-                break
-            if not any(keyword in href.casefold() for keyword in PRIORITIES):
-                continue
-            try:
-                candidate = normalize_url(urljoin(url, href))
-                if candidate in seen or urlsplit(candidate).netloc != host:
-                    continue
-                seen.add(candidate)
-                page_body = session.page(candidate)
-                page_doc = Document(page_body)
-                page_proof = verify_site_owner(page_doc, number, legal_name)
-                if page_proof:
-                    pages.append((candidate, page_body, page_doc, page_proof))
-            except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
-                result['website_research']['errors'].append(str(exc) if isinstance(exc, AccessError) else type(exc).__name__)
         evidence_ids = {item['id'] for item in result['evidence']}
-        social_links = []
-        for page_url, page_body, page_doc, page_proof in pages:
-            social_links.extend(page_doc.links)
-            key = hashlib.sha256(page_body).hexdigest()
-            if key in evidence_ids:
-                continue
-            evidence_ids.add(key)
-            evidence = {'id': key, 'source_url': page_url, 'retrieved_at': datetime.now(timezone.utc).isoformat(),
-                        'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
-                        'source_class': 'verified_company_website', 'extractor_version': 'visible_text_v2',
-                        'identity_span': page_proof, 'legal_name': legal_name, 'organisation_number': number, 'synthetic': False,
-                        'access_policy': website_policy}
-            result['evidence'].append(evidence)
-            from .jobs import extract_jobs
-            jobs = extract_jobs(page_doc, number, legal_name, page_url, key, evidence['retrieved_at'])
-            result['claims'].extend(jobs)
-            from .news import extract_news
-            news = extract_news(page_doc, number, legal_name, page_url, key, evidence['retrieved_at'])
-            result['claims'].extend(news)
-            if news:
-                result['availability']['news'] = {'state': 'available'}
-            if jobs:
-                result['availability']['jobs'] = {'state': 'available'}
-            blobs.append((page_body, '.html'))
-            # Identity passages and structured postings retain separate locators.
-            start, end = max(0, page_proof[0]-150), min(len(page_doc.text), page_proof[1]+150)
-            value = page_doc.text[start:end]
-            field = 'website_identity' if page_url == url else 'company_page'
-            result['claims'].append({'id': hashlib.sha256((number+field+page_url+value).encode()).hexdigest(),
-                'field': field, 'subject': field + ':' + page_url, 'value': value, 'evidence_id': key,
-                'text_span': [start, end], 'reporting_period': None, 'effective_date': None,
-                'extraction_method': 'visible_text_v2'})
-            result['availability'][field] = {'state': 'available'}
-            result['website_research']['pages_verified'] += 1
-        verified_social = set()
-        for href in social_links:
-            if len(verified_social) >= 3:
-                break
-            candidate_session = None
-            counted_requests = False
-            try:
-                social_url = normalize_url(urljoin(url, href))
-                social_host = urlsplit(social_url).hostname
-                root_host = social_host[4:] if social_host.startswith('www.') else social_host
-                if root_host not in SOCIAL_HOSTS or (social_host not in allowed_domains and not discover) or social_url in verified_social:
+        if verified:
+            url, body, document, proof, session = verified
+            host = urlsplit(url).hostname
+            pages = [(url, body, document, proof)]
+            seen = {url}
+            for href in document.links:
+                if len(seen) >= 5 or len(pages) >= 3:
+                    break
+                if not any(keyword in href.casefold() for keyword in PRIORITIES):
                     continue
-                candidate_session = session_factory(social_url, deadline)
-                social_body = candidate_session.page(social_url)
-                social_requests += candidate_session.requests
-                counted_requests = True
-                social_doc = Document(social_body)
-                proof = verify_social_identity(social_doc, number, legal_name)
-                if not proof:
-                    continue
-                key = hashlib.sha256(social_body).hexdigest()
+                try:
+                    page_url = normalize_url(urljoin(url, href))
+                    if page_url in seen or urlsplit(page_url).netloc != host:
+                        continue
+                    seen.add(page_url)
+                    page_body = session.page(page_url)
+                    page_doc = Document(page_body)
+                    page_proof = verify_site_owner(page_doc, number, legal_name)
+                    if page_proof:
+                        pages.append((page_url, page_body, page_doc, page_proof))
+                except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
+                    result['website_research']['errors'].append(str(exc) if isinstance(exc, AccessError) else type(exc).__name__)
+            for page_url, page_body, page_doc, page_proof in pages:
+                social_links.extend(page_doc.links)
+                key = hashlib.sha256(page_body).hexdigest()
                 if key in evidence_ids:
                     continue
-                verified_social.add(social_url)
                 evidence_ids.add(key)
-                social_evidence = {'id': key, 'source_url': social_url, 'retrieved_at': datetime.now(timezone.utc).isoformat(),
-                    'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
-                    'source_class': 'verified_social_page', 'extractor_version': 'social_identity_v1',
-                    'identity_span': proof, 'legal_name': legal_name, 'organisation_number': number,
-                    'synthetic': False, 'access_policy': social_policy}
-                result['evidence'].append(social_evidence)
-                result['claims'].append({'id': hashlib.sha256((number + 'social_pages' + social_url).encode()).hexdigest(),
-                    'field': 'social_pages', 'subject': 'social_pages:' + social_url, 'value': social_url,
-                    'evidence_id': key, 'text_span': list(proof), 'reporting_period': None,
-                    'effective_date': None, 'extraction_method': 'social_identity_v1'})
-                result['availability']['social_pages'] = {'state': 'available'}
-                blobs.append((social_body, '.html'))
-            except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
-                if candidate_session is None:
-                    failed_session_requests += getattr(exc, 'requests', 0)
-                elif not counted_requests:
-                    social_requests += candidate_session.requests
-                continue
+                retrieved_at = datetime.now(timezone.utc).isoformat()
+                evidence = {'id': key, 'source_url': page_url, 'retrieved_at': retrieved_at,
+                            'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
+                            'source_class': 'verified_company_website', 'extractor_version': 'visible_text_v2',
+                            'identity_span': page_proof, 'legal_name': legal_name, 'organisation_number': number, 'synthetic': False,
+                            'access_policy': website_policy}
+                result['evidence'].append(evidence)
+                from .jobs import extract_jobs
+                jobs = extract_jobs(page_doc, number, legal_name, page_url, key, retrieved_at)
+                result['claims'].extend(jobs)
+                from .news import extract_news
+                news = extract_news(page_doc, number, legal_name, page_url, key, retrieved_at)
+                result['claims'].extend(news)
+                if news:
+                    result['availability']['news'] = {'state': 'available'}
+                if jobs:
+                    result['availability']['jobs'] = {'state': 'available'}
+                blobs.append((page_body, '.html'))
+                start, end = max(0, page_proof[0]-150), min(len(page_doc.text), page_proof[1]+150)
+                value = page_doc.text[start:end]
+                field = 'website_identity' if page_url == url else 'company_page'
+                result['claims'].append({'id': hashlib.sha256((number+field+page_url+value).encode()).hexdigest(),
+                    'field': field, 'subject': field + ':' + page_url, 'value': value, 'evidence_id': key,
+                    'text_span': [start, end], 'reporting_period': None, 'effective_date': None,
+                    'extraction_method': 'visible_text_v2'})
+                result['availability'][field] = {'state': 'available'}
+                result['website_research']['pages_verified'] += 1
+        social_blobs, social_requests = _enrich_social(
+            result, social_links, url if verified else None, allowed_domains,
+            deadline, session_factory, discover, evidence_ids)
+        blobs.extend(social_blobs)
         from .models import company_summary
         result['summary'] = company_summary(result)
     except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
