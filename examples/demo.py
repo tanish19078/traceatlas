@@ -14,6 +14,6 @@ body = {'organisasjonsnummer': number, 'navn': 'SYNTHETIC — Northlight Example
         'aktivitet': ['Synthetic company used only to demonstrate evidence inspection.'],
         'harRegistrertAntallAnsatte': True, 'antallAnsatte': 12,
         'hjemmeside': 'example.invalid', 'konkurs': False}
-(fixtures / (number + '.json')).write_text(json.dumps(body,ensure_ascii=False))
+(fixtures / (number + '.json')).write_text(json.dumps(body,ensure_ascii=False), encoding='utf-8')
 print(json.dumps(traceatlas.run_batch([number], root, fixture_dir=fixtures), indent=2))
 print('Open runs/demo/index.html. All example facts are synthetic.')
