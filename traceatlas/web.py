@@ -18,6 +18,7 @@ USER_AGENT = 'TraceAtlas'
 MAX_BYTES = 1_000_000
 ORG_PATTERN = re.compile(r'\b(?:organisasjonsnummer|organisasjonsnr|org\.?\s*(?:nr|nummer)\.?)\s*[:.]?\s*(\d{3}[ .]?\d{3}[ .]?\d{3})(?!\d)', re.I)
 PRIORITIES = ('kontakt', 'contact', 'om-oss', 'about', 'karriere', 'careers', 'jobs', 'nyheter', 'news')
+SOCIAL_HOSTS = {'facebook.com', 'instagram.com', 'linkedin.com', 'x.com', 'twitter.com', 'youtube.com'}
 _HOSTS = {}
 _HOSTS_LOCK = threading.Lock()
 
@@ -223,6 +224,21 @@ def verify_site_owner(document, number, legal_name):
     return proof
 
 
+def verify_social_identity(document, number, legal_name):
+    """Accept a public social profile only with an exact legal-name or org-number match."""
+    text = document.text
+    number_match = ORG_PATTERN.search(text)
+    if number_match and re.sub(r'\D', '', number_match.group(1)) == number:
+        return (number_match.start(), number_match.end())
+    expected = normalize_name(legal_name)
+    for heading in document.headings:
+        if normalize_name(heading) == expected:
+            position = text.find(heading)
+            if position >= 0:
+                return (position, position + len(heading))
+    return None
+
+
 class SiteSession:
     def __init__(self, origin, deadline, request_limit=5, transport=get_page):
         self.origin, self.deadline, self.limit, self.transport = origin, deadline, request_limit, transport
@@ -300,6 +316,7 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
     number = result['organisation_number']
     legal_name = result['legal_identity']['name']
     session = None
+    social_requests = 0
     try:
         candidates = [candidate for candidate in result['candidates'] if candidate['kind'] == 'website']
         if not candidates:
@@ -339,7 +356,9 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
             except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
                 result['website_research']['errors'].append(str(exc) if isinstance(exc, AccessError) else type(exc).__name__)
         evidence_ids = {item['id'] for item in result['evidence']}
+        social_links = []
         for page_url, page_body, page_doc, page_proof in pages:
+            social_links.extend(page_doc.links)
             key = hashlib.sha256(page_body).hexdigest()
             if key in evidence_ids:
                 continue
@@ -371,7 +390,41 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
                 'extraction_method': 'visible_text_v2'})
             result['availability'][field] = {'state': 'available'}
             result['website_research']['pages_verified'] += 1
-        result['summary'] = legal_name + ': registry identity and company website verified. Inspect the linked passages for support.'
+        verified_social = set()
+        for href in social_links:
+            if len(verified_social) >= 3:
+                break
+            try:
+                social_url = normalize_url(urljoin(url, href))
+                social_host = urlsplit(social_url).hostname
+                root_host = social_host[4:] if social_host.startswith('www.') else social_host
+                if root_host not in SOCIAL_HOSTS or social_host not in allowed_domains or social_url in verified_social:
+                    continue
+                candidate_session = session_factory(social_url, deadline)
+                social_body = candidate_session.page(social_url)
+                social_requests += candidate_session.requests
+                social_doc = Document(social_body)
+                proof = verify_social_identity(social_doc, number, legal_name)
+                if not proof:
+                    continue
+                verified_social.add(social_url)
+                key = hashlib.sha256(social_body).hexdigest()
+                social_evidence = {'id': key, 'source_url': social_url, 'retrieved_at': datetime.now(timezone.utc).isoformat(),
+                    'content_sha256': key, 'snapshot_path': 'snapshots/' + key + '.html',
+                    'source_class': 'verified_social_page', 'extractor_version': 'social_identity_v1',
+                    'identity_span': proof, 'legal_name': legal_name, 'organisation_number': number,
+                    'synthetic': False, 'access_policy': 'reviewed_domain_allowlist_and_robots'}
+                result['evidence'].append(social_evidence)
+                result['claims'].append({'id': hashlib.sha256((number + 'social_pages' + social_url).encode()).hexdigest(),
+                    'field': 'social_pages', 'subject': 'social_pages:' + social_url, 'value': social_url,
+                    'evidence_id': key, 'text_span': list(proof), 'reporting_period': None,
+                    'effective_date': None, 'extraction_method': 'social_identity_v1'})
+                result['availability']['social_pages'] = {'state': 'available'}
+                blobs.append((social_body, '.html'))
+            except (AccessError, OSError, ValueError, http.client.HTTPException):
+                continue
+        from .models import company_summary
+        result['summary'] = company_summary(result)
     except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
         reason = str(exc) if isinstance(exc, AccessError) else type(exc).__name__
         blocked = {'robots_disallowed', 'robots_unavailable', 'source_blocked', 'cross_domain_url', 'non_public_address', 'redirect_requires_new_candidate'}
@@ -381,5 +434,5 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession):
         result['website_research']['requests'] = getattr(exc, 'requests', 0)
     finally:
         if session:
-            result['website_research']['requests'] = session.requests
+            result['website_research']['requests'] = session.requests + social_requests
     return blobs
