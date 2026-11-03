@@ -14,9 +14,12 @@ def output_lock(root):
         if os.name == 'nt':
             import msvcrt
             stream.seek(0)
-            if not stream.read(1):
-                stream.write(b'0')
-                stream.flush()
+            try:
+                if not stream.read(1):
+                    stream.write(b'0')
+                    stream.flush()
+            except PermissionError as exc:
+                raise ValueError('output_directory_in_use') from exc
             stream.seek(0)
             try:
                 msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)

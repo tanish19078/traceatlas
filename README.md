@@ -193,10 +193,11 @@ and stored support, not the completeness of information found online.
 
 ## Current limits
 
-Automatic source discovery, broad leadership and financial extraction, and PDF
-parsing are not implemented. Legal research uses supplied reviewed URLs. Website
-and legal-source integration are tested with offline HTML fixtures; successful
-live external retrieval has not yet been validated in this environment.
+Open-web source discovery, broad leadership extraction, and PDF parsing are not
+implemented. Revenue trends use the official annual-accounts API where comparable
+periods are available. Legal research uses supplied reviewed URLs. Website and
+legal-source integration are tested with offline HTML fixtures; live website
+retrieval remains subject to reviewed domain allowlists.
 
 Direct Python API calls use a soft deadline. The supervised CLI can stop a
 stalled research worker, but final filesystem writes are not preemptible. The auditor verifies support in saved snapshots; it cannot independently

@@ -70,8 +70,8 @@ def validate_result(result, root, historical=False):
             if claim['field'] == 'registered_employees':
                 require(type(value) is int and value >= 0, 'invalid employee count')
         elif source_class == 'official_accounts':
-            from .accounts import BASE, extract
-            require(item['source_url'] == BASE + result['organisation_number'], 'wrong accounts source URL')
+            from .accounts import BASE as ACCOUNTS_BASE, extract
+            require(item['source_url'] == ACCOUNTS_BASE + result['organisation_number'], 'wrong accounts source URL')
             require(item.get('organisation_number') == result['organisation_number'], 'wrong accounts identity')
             require(item.get('extractor_version') == 'official_accounts_v1', 'unknown accounts extractor')
             supported = extract(json.loads(body), result['organisation_number'], key)

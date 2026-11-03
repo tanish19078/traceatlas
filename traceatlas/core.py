@@ -149,7 +149,7 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
                   'external_coverage_measured': False, 'official_score': None,
                   'external_api_cost_usd': 0, 'models': [],
                   'limitations': ['Website and legal-source research is opt-in on reviewed allowlisted domains.',
-                                  'Leadership and financial extraction not implemented; jobs/news require individual attributed records and legal sources are reviewed URLs.',
+                                  'Automated open-web search and leadership extraction are not implemented; website and social research uses registry URLs and verified company-page links.',
                                   'Direct API calls use a soft deadline; the supervised CLI can stop stalled research workers.',
                                   'Not an official evaluation or qualification result.']}
         atomic_write(root / 'report.json', json.dumps(report, indent=2) + '\n')
