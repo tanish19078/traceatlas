@@ -17,7 +17,8 @@ from urllib.robotparser import RobotFileParser
 USER_AGENT = 'TraceAtlas'
 MAX_BYTES = 1_000_000
 ORG_PATTERN = re.compile(r'\b(?:organisasjonsnummer|organisasjonsnr|org\.?\s*(?:nr|nummer)\.?)\s*[:.]?\s*(\d{3}[ .]?\d{3}[ .]?\d{3})(?!\d)', re.I)
-PRIORITIES = ('kontakt', 'contact', 'om-oss', 'about', 'karriere', 'careers', 'jobs', 'nyheter', 'news')
+PRIORITIES = ('nyheter', 'news', 'blogg', 'blog', 'aktuelt', 'press', 'karriere', 'careers', 'jobs', 'kontakt', 'contact', 'om-oss', 'about')
+NEWS_INDEXES = {'news', 'nyheter', 'blog', 'blogg', 'aktuelt', 'press', 'pressemeldinger'}
 SOCIAL_HOSTS = {'facebook.com', 'instagram.com', 'linkedin.com', 'x.com', 'twitter.com', 'youtube.com'}
 _HOSTS = {}
 _HOSTS_LOCK = threading.Lock()
@@ -50,6 +51,21 @@ def normalize_url(value):
     if len(host) > 253 or any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', label) for label in host.split('.')):
         raise AccessError('invalid_hostname')
     return urlunsplit(('https', host, parsed.path or '/', parsed.query, ''))
+
+
+def _news_index(url):
+    path = urlsplit(url).path.rstrip('/')
+    return bool(path) and path.rsplit('/', 1)[-1].casefold() in NEWS_INDEXES
+
+
+def _link_priority(href):
+    value = href.casefold()
+    return min((PRIORITIES.index(word) for word in PRIORITIES if word in value), default=len(PRIORITIES))
+
+
+def _story_link_priority(href):
+    priority = _link_priority(href)
+    return priority if priority < len(PRIORITIES) else -1
 
 
 def public_addresses(host):
@@ -474,13 +490,12 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
             host = urlsplit(url).hostname
             pages = [(url, body, document, proof)]
             seen = {url}
-            for href in document.links:
-                if len(seen) >= 5 or len(pages) >= 3:
-                    break
-                if not any(keyword in href.casefold() for keyword in PRIORITIES):
-                    continue
+            root_links = [href for href in document.links[:30] if _link_priority(href) < len(PRIORITIES)]
+            queue = [(url, href) for href in sorted(root_links, key=_link_priority)]
+            while queue and len(pages) < 5:
+                base_url, href = queue.pop(0)
                 try:
-                    page_url = normalize_url(urljoin(url, href))
+                    page_url = normalize_url(urljoin(base_url, href))
                     if page_url in seen or urlsplit(page_url).netloc != host:
                         continue
                     seen.add(page_url)
@@ -489,6 +504,10 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
                     page_proof = verify_site_owner(page_doc, number, legal_name)
                     if page_proof:
                         pages.append((page_url, page_body, page_doc, page_proof))
+                        if _news_index(page_url):
+                            story_links = [link for link in page_doc.links[:30] if link and not link.startswith(('mailto:', 'tel:', '#'))]
+                            story_links.sort(key=_story_link_priority)
+                            queue = [(page_url, link) for link in story_links] + queue
                 except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
                     result['website_research']['errors'].append(str(exc) if isinstance(exc, AccessError) else type(exc).__name__)
             for page_url, page_body, page_doc, page_proof in pages:

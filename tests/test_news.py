@@ -1,6 +1,7 @@
 """Navigation, product pages, feeds and parent activity are not company news."""
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -92,3 +93,18 @@ class NewsTests(unittest.TestCase):
             row=json.loads((Path(folder)/'profiles.jsonl').read_text())
             self.assertIn('visible_html_news_v1',[claim['extraction_method'] for claim in row['claims']])
             self.assertTrue(verify(folder)['passed'])
+    def test_crawler_follows_company_news_index_to_story(self):
+        class Session:
+            def __init__(self,origin,deadline):self.requests=1
+            def page(self,url):
+                if url=='https://example.com/':
+                    return f'{NAME} Org nr {ORG} <a href="/nyheter">Nyheter</a>'.encode()
+                if url=='https://example.com/nyheter':
+                    return f'{NAME} Org nr {ORG} <a href="/nyheter/new-office">Read story</a>'.encode()
+                return visible_article()
+        enrich=web.enrich
+        with patch.object(registry,'fetch',return_value=fixture(hjemmeside='example.com')):
+            row=core.research(ORG)[0]
+            enrich(row,['example.com'],time.monotonic()+10,Session)
+        self.assertIn('visible_html_news_v1',[claim['extraction_method'] for claim in row['claims']])
+        self.assertEqual(row['website_research']['pages_verified'],3)
