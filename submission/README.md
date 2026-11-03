@@ -36,13 +36,16 @@ with the original row and file hash preserved. Requested companies missing from
 the supplied file return explicit unavailable results; there is no live fallback.
 Bulk data is genuine supplied data, distinct from synthetic `--fixtures` mode.
 
-Website research remains opt-in through reviewed `--allow-domain` hostnames or
-`--search-websites`. Search discovery requires `BRAVE_SEARCH_API_KEY` and makes
-up to two Brave Search API requests per company; its current listed rate is $5
-per 1,000 requests. Search results only nominate pages for direct exact-identity
-checks. The key stays in the environment and is not written to run artifacts.
-Additional reviewed legal sources use `--legal-sources`. No implicit assertion
-of source access rights is made for unseen registry domains.
+Website research remains opt-in through reviewed `--allow-domain` hostnames,
+deterministic `--discover-websites` candidates, or `--search-websites`. Search
+discovery requires `BRAVE_SEARCH_API_KEY` and makes up to two Brave Search API
+requests per company at its current listed rate of $5 per 1,000 requests. Search
+results only nominate pages for direct exact-identity checks. The key stays in
+the environment and is not written to run artifacts. Do not use a personal
+Brave account for an official run; enable search only if the evaluator supplies
+an approved reproducible credential. Additional reviewed legal sources use
+`--legal-sources`. No implicit assertion of source access rights is made for
+unseen registry domains.
 
 ## Audit changes
 
@@ -54,11 +57,13 @@ of source access rights is made for unseen registry domains.
 - A job requires one distinct JobPosting on an individual page, a matching ad
   URL, an exact employer, a dated record and a description present in visible
   HTML. Root, careers and search/listing pages are rejected.
-- Company news requires one structured NewsArticle, a matching individual URL,
-  one visible article, a headline in that article, exact company attribution in
-  both metadata and visible text, and `datePublished`. Menu labels, Product
-  records, collection pages and feed `updated`/`dateModified` timestamps are not
-  accepted as news or publication dates.
+- Company news uses a structured NewsArticle when present, with a matching
+  individual URL, visible headline and article, exact company attribution in
+  metadata and visible text, and `datePublished`. When article schema is absent,
+  one visible article with a headline, exact legal name or labelled organisation
+  number, and one consistent past publication date is accepted. Menu labels,
+  Product records, collection pages and feed `updated`/`dateModified` timestamps
+  are not accepted as news or publication dates.
 - External legal news requires identity inside the article, a single dated
   Article/NewsArticle with matching URL and a visible headline. A site footer
   cannot attribute the story. Legal reports remain source reports, not findings
@@ -114,23 +119,30 @@ historical execution evidence, not a score for this revision.
 
 ## Models, costs, source rights and remaining limits
 
-No models, paid search services or paid feeds are used. Expected third-party
-API/model charges are USD 0 per run, excluding compute, storage and bandwidth.
-Default live identity calls use Brreg's fixed public entity endpoint; official
-registry data declares NLOD 2.0. Optional sites/news/filings retain their own
-rights and require a documented access/reuse review before enabling hosts.
-Robots permission is not a reuse licence. No personal credentials are required.
+No model API or paid feed is used. The default registry-only command has no
+third-party API charge; enabling Brave search adds up to $0.01 per company at
+the current listed rate, excluding compute, storage and bandwidth. Official
+run search requires an evaluator-approved credential; personal service accounts
+are not reproducible. Default live identity calls use Brreg's fixed public
+entity endpoint; official registry data declares NLOD 2.0. Optional
+sites/news/filings retain their own rights and require a documented access/reuse
+review before enabling hosts. Robots permission is not a reuse licence.
 
 Python uses the PSF licence and bundled notices. Build-only setuptools 84.0.0
 uses MIT; checkout/setup-python are pinned official action releases. TraceAtlas
 remains author-owned public code without an asserted general reuse licence.
 
-The 128 offline tests include bulk parsing/provenance, contract integrity,
+The 146 offline tests include bulk parsing/provenance, contract integrity,
 concurrent request caps, Retry-After, parent attribution, article/job validation,
-refresh, resume and worker termination. Registry and annual-account retrieval
-were checked on a three-company live sample; live website retrieval remains
-unvalidated in this environment. Annual-account revenue, registered roles and
-sub-entities are extracted from official registry APIs. Open-web source discovery,
-broad leadership coverage and PDF extraction remain incomplete. No official score,
+refresh, resume and worker termination; one Windows symlink test is skipped
+when the runner lacks symlink privilege. The documented 100-company offline
+smoke run completed with 100 results, 805 audited claims, 98 available registry
+profiles and two explicit unavailable results, using zero outbound requests.
+Registry and annual-account retrieval were checked on a three-company live
+sample, and website retrieval has limited live sample coverage. Search API
+discovery was not exercised in that sample because it is billed and requires an
+approved credential. Annual-account revenue, registered roles and sub-entities
+are extracted from official registry APIs. Open-web source discovery, broad
+leadership coverage and PDF extraction remain incomplete. No official score,
 recall measurement or qualification is claimed. The organizer must accept and
 run the revised exact commit before it changes the entry of record.
