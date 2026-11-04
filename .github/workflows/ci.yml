@@ -27,7 +27,8 @@ jobs:
       - name: Offline demo and optimized evidence audit
         run: |
           python -m examples.demo
-          python -O -m traceatlas.audit runs/demo --expected-count 1
+          python -O -m traceatlas.audit runs/demo --expected-count 3
+          python -m examples.publish_site
       - name: Compile entry points
         run: python -m compileall -q traceatlas tests examples
       - name: Install package

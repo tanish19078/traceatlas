@@ -155,8 +155,13 @@ class BatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, patch.object(registry,'fetch',return_value=fixture(navn='<script>alert(1)</script>')):
             t.run_batch([ORG], folder)
             page = (Path(folder)/'index.html').read_text()
-        self.assertNotIn('<script>',page)
+            result = json.loads((Path(folder)/'profiles.jsonl').read_text())
+        self.assertNotIn('<script>alert(1)</script>',page)
         self.assertIn('&lt;script&gt;',page)
+        self.assertIn('id="open-comparison"',page)
+        self.assertIn('id="comparison-dialog"',page)
+        self.assertIn('data-comparison=',page)
+        self.assertIn('href="'+result['evidence'][0]['source_url']+'"',page)
 
     def test_fixture_mode_is_explicit(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -164,8 +169,12 @@ class BatchTests(unittest.TestCase):
             (root/(ORG+'.json')).write_bytes(fixture())
             report = t.run_batch([ORG], root/'out', fixture_dir=root)
             result = json.loads((root/'out'/'profiles.jsonl').read_text())
+            page = (root/'out'/'index.html').read_text()
             self.assertEqual(report['mode'], 'fixture')
             self.assertTrue(result['evidence'][0]['synthetic'])
+            self.assertIn('toggle-label',page)
+            self.assertIn('Synthetic fixture',page)
+            self.assertNotIn('https://data.brreg.no/enhetsregisteret/api/enheter/'+ORG,page)
 
     def test_one_storage_failure_does_not_drop_other_results(self):
         save = t.Store.save
