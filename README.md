@@ -48,7 +48,7 @@ python -m examples.demo
 Open `runs/demo/index.html` to explore the interface. The offline demo includes
 three synthetic companies, company search, side-by-side comparison, and evidence
 locators. Synthetic records are labelled and never link to live registry pages.
-The hosted gallery is built from the same sample profiles in `docs/index.html`.
+A publishable gallery is built from the same sample profiles in `docs/index.html`.
 
 The explorer’s dashboard cards and directory hierarchy take visual cues from
 [Flowbite Admin Dashboard](https://github.com/themesberg/flowbite-admin-dashboard)
