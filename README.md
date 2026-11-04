@@ -45,8 +45,16 @@ cd traceatlas
 python -m examples.demo
 ```
 
-Open `runs/demo/index.html` to explore the interface. The demo runs offline and
-uses clearly labelled synthetic facts.
+Open `runs/demo/index.html` to explore the interface. The offline demo includes
+three synthetic companies, company search, side-by-side comparison, and evidence
+locators. Synthetic records are labelled and never link to live registry pages.
+The hosted gallery is built from the same sample profiles in `docs/index.html`.
+
+The explorer’s dashboard cards and directory hierarchy take visual cues from
+[Flowbite Admin Dashboard](https://github.com/themesberg/flowbite-admin-dashboard)
+and [Start Bootstrap Agency](https://github.com/StartBootstrap/startbootstrap-agency),
+both MIT-licensed. TraceAtlas keeps its own HTML, CSS, and JavaScript renderer so
+the explorer stays standalone and dependency-free.
 
 For live registry research, create `companies.txt` with one organisation number
 per line, then run:
@@ -219,10 +227,11 @@ demo in `examples/`. Generated output under `runs/` is excluded from Git.
 ```bash
 python -m unittest -v
 python -m examples.demo
-python -O -m traceatlas.audit runs/demo --expected-count 1
+python -m examples.publish_site
+python -O -m traceatlas.audit runs/demo --expected-count 3
 ```
 
-The 128-test suite covers company matching, source integrity, legal-report dates,
+The 150-test suite covers company matching, source integrity, legal-report dates,
 refresh history, recovery, output escaping and network safeguards. CI runs on
 Python 3.11, 3.12 and 3.13 and checks installation outside the checkout.
 
