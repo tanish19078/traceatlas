@@ -16,6 +16,7 @@ class AttributionTests(unittest.TestCase):
     def test_exact_owner_can_resolve_a_brand_heading(self):
         owner={'@type':'Organization','name':NAME,'taxID':ORG}
         self.assertIsNotNone(verify_site_owner(self.owner_doc(owner),ORG,NAME))
+        self.assertIsNotNone(verify_site_owner(self.owner_doc(owner),ORG,NAME,require_owner=True))
     def test_conflicting_organization_taxid_rejected(self):
         self.assertIsNone(verify_site_owner(self.owner_doc({'@type':'Organization','name':NAME,'taxID':'974760673'}),ORG,NAME))
 

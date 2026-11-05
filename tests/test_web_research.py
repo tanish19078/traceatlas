@@ -145,7 +145,7 @@ class WebsiteTests(unittest.TestCase):
     def test_opt_in_name_domain_probe_requires_exact_identity(self):
         class Discovered(FakeSession):
             def page(self, url):
-                return b'<h1>SYNTHETIC TEST COMPANY</h1><p>Local company details.</p>'
+                return b'<h1>SYNTHETIC TEST COMPANY</h1><p>Org nr 923609016. Local company details.</p>'
         with patch.object(registry, 'fetch', return_value=fixture(hjemmeside='')):
             row = t.research(ORG)[0]
         blobs = w.enrich(row, [], time.monotonic()+10, Discovered, discover=True)
@@ -153,6 +153,18 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(row['candidates'][0]['value'], 'www.synthetictestcompany.no')
         self.assertEqual(row['candidates'][0]['status'], 'verified')
         self.assertEqual(row['availability']['website_identity']['state'], 'available')
+
+    def test_search_discovered_customer_mention_is_not_site_ownership(self):
+        class Mention(FakeSession):
+            def page(self,url):
+                return b'<h1>Vendor directory</h1><p>Our customer SYNTHETIC TEST COMPANY uses this service.</p>'
+        with patch.object(registry,'fetch',return_value=fixture(hjemmeside='')):
+            row=t.research(ORG)[0]
+        row['candidates'].append({'kind':'website','value':URL,'status':'discovered',
+                                  'discovery_source':'web_search'})
+        self.assertEqual(w.enrich(row,[],time.monotonic()+10,Mention,discover=True),[])
+        self.assertEqual(row['candidates'][0]['status'],'rejected')
+        self.assertFalse(any(claim['field']=='website_identity' for claim in row['claims']))
 
     def test_search_discovered_social_page_is_checked_without_a_website(self):
         class Discovered(FakeSession):

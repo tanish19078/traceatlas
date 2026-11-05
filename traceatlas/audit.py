@@ -109,7 +109,10 @@ def validate_result(result, root, historical=False):
             document = Document(body)
             legal_name = item.get('legal_name', result['legal_identity'].get('name', '')) if historical else result['legal_identity']['name']
             gate = verify_site_owner if item['source_class'] == 'verified_company_website' and item['extractor_version'] == 'visible_text_v2' else verify_identity
-            proof = gate(document, result['organisation_number'], legal_name)
+            proof = gate(
+                document, result['organisation_number'], legal_name,
+                require_owner=item.get('identity_policy') == 'exact_owner_or_number',
+            ) if gate is verify_site_owner else gate(document, result['organisation_number'], legal_name)
             require(proof is not None and proof == item['identity_span'], 'website entity proof missing')
             if source_class in ('legal_news_report', 'legal_filing_report'):
                 from .legal import extract_report

@@ -219,7 +219,7 @@ def verify_identity(document, number, legal_name):
     return None
 
 
-def verify_site_owner(document, number, legal_name):
+def verify_site_owner(document, number, legal_name, require_owner=False):
     """A subsidiary in a group's footer does not establish site ownership."""
     page_numbers = {re.sub(r'\D', '', match.group(1)) for match in ORG_PATTERN.finditer(document.text)}
     if page_numbers and page_numbers != {number}:
@@ -261,6 +261,7 @@ def verify_site_owner(document, number, legal_name):
                 publisher = by_id.get(publisher['@id'])
             owners.append(publisher)
     name = normalize_name(legal_name)
+    owner_verified = False
     if owners:
         for owner in owners:
             if not isinstance(owner, dict) or not isinstance(owner.get('legalName', owner.get('name')), str) or normalize_name(owner.get('legalName', owner.get('name'))) != name:
@@ -268,12 +269,15 @@ def verify_site_owner(document, number, legal_name):
             tax_id = owner.get('taxID', owner.get('vatID'))
             if tax_id is not None and (not isinstance(tax_id, str) or re.sub(r'\D', '', tax_id) != number):
                 return None
+        owner_verified = True
     else:
         headings = [normalize_name(value) for value in document.headings if value.strip()]
         if any(re.search(r'\b(?:group|holding|konsern|konsernet)\b', heading) for heading in headings):
             return None
         if re.search(r'\b(?:group website|our subsidiaries|group companies|våre selskaper|konsernets nettside)\b', document.text, re.I):
             return None
+    if require_owner and page_numbers != {number} and not owner_verified:
+        return None
     return proof
 
 
@@ -487,7 +491,11 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
         social_links = []
         if not candidates:
             if discover:
-                candidates = [{'kind': 'website', 'value': host, 'status': 'discovered'} for host in _website_guesses(result)]
+                candidates = [
+                    {'kind': 'website', 'value': host, 'status': 'discovered',
+                     'discovery_source': 'name_town_guess'}
+                    for host in _website_guesses(result)
+                ]
                 result['candidates'].extend(candidates)
         social_candidates = [item for item in result.get('candidates', []) if item.get('kind') == 'social_page']
         if not candidates and not social_candidates:
@@ -505,10 +513,15 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
                 sessions.append(candidate_session)
                 candidate_body = candidate_session.page(candidate_url)
                 candidate_doc = Document(candidate_body)
-                candidate_proof = verify_site_owner(candidate_doc, number, legal_name)
+                strict_owner = candidate.get('discovery_source') in {
+                    'name_town_guess', 'web_search'
+                }
+                candidate_proof = verify_site_owner(
+                    candidate_doc, number, legal_name, require_owner=strict_owner)
                 if candidate_proof:
                     candidate['status'] = 'verified'
-                    verified = (candidate_url, candidate_body, candidate_doc, candidate_proof, candidate_session)
+                    verified = (candidate_url, candidate_body, candidate_doc,
+                                candidate_proof, candidate_session, strict_owner)
                     break
                 candidate['status'] = 'rejected'
             except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
@@ -519,7 +532,7 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
             result['availability']['website_identity'] = {'state': 'ambiguous' if sessions else 'not_available', 'reason': 'exact_entity_proof_not_found' if sessions else 'website_candidate_unavailable'}
         evidence_ids = {item['id'] for item in result['evidence']}
         if verified:
-            url, body, document, proof, session = verified
+            url, body, document, proof, session, strict_owner = verified
             host = urlsplit(url).hostname
             pages = [(url, body, document, proof)]
             seen = {url}
@@ -600,6 +613,8 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
                             'source_class': 'verified_company_website', 'extractor_version': 'visible_text_v2',
                             'identity_span': page_proof, 'legal_name': legal_name, 'organisation_number': number, 'synthetic': False,
                             'access_policy': website_policy}
+                if page_url == url and strict_owner:
+                    evidence['identity_policy'] = 'exact_owner_or_number'
                 result['evidence'].append(evidence)
                 if page_url == url:
                     descriptions = extract_website_description(page_doc, number, legal_name, page_url, key)
