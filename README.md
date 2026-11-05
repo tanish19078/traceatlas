@@ -231,8 +231,9 @@ python -m examples.publish_site
 python -O -m traceatlas.audit runs/demo --expected-count 3
 ```
 
-The 150-test suite covers company matching, source integrity, legal-report dates,
-refresh history, recovery, output escaping and network safeguards. CI runs on
+The 168-test suite covers company matching, source integrity, financial statements,
+legal-report dates, refresh history, recovery, output escaping and network
+safeguards. CI runs on
 Python 3.11, 3.12 and 3.13 and checks installation outside the checkout.
 
 A live registry check on 17 October 2026 returned 100 profiles with 809 audited
@@ -245,9 +246,10 @@ and stored support, not the completeness of information found online.
 Broad default search-engine discovery, broad leadership extraction, and PDF
 parsing are not implemented. Credential-free website discovery uses limited
 name/town domain guesses; opt-in Brave candidate search is also available.
-Registered roles and operating sub-entities come from the public
-registry. Revenue trends use the official annual-accounts API where comparable
-periods are available. Legal research uses supplied reviewed URLs. Website and
+Registered roles and operating sub-entities come from the public registry.
+Revenue, sales, operating and annual results, assets, equity and liabilities use
+the official annual-accounts API; revenue trends require comparable periods.
+Legal research uses supplied reviewed URLs. Website and
 legal-source integration are tested with offline HTML fixtures; live website
 retrieval remains subject to reviewed domain allowlists.
 

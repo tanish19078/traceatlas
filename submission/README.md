@@ -140,7 +140,7 @@ Python uses the PSF licence and bundled notices. Build-only setuptools 84.0.0
 uses MIT; checkout/setup-python are pinned official action releases. TraceAtlas
 remains author-owned public code without an asserted general reuse licence.
 
-The 150 offline tests include bulk parsing/provenance, contract integrity,
+The 168 offline tests include bulk parsing/provenance, contract integrity,
 concurrent request caps, Retry-After, parent attribution, article/job validation,
 refresh, resume and worker termination; one Windows symlink test is skipped
 when the runner lacks symlink privilege. The documented 100-company offline
@@ -149,8 +149,9 @@ profiles and two explicit unavailable results, using zero outbound requests.
 Registry and annual-account retrieval were checked on a three-company live
 sample, and website retrieval has limited live sample coverage. Search API
 discovery was not exercised in that sample because it is billed and requires an
-approved credential. Annual-account revenue, registered roles and sub-entities
-are extracted from official registry APIs. Open-web source discovery, broad
-leadership coverage and PDF extraction remain incomplete. No official score,
-recall measurement or qualification is claimed. The organizer must accept and
-run the revised exact commit before it changes the entry of record.
+approved credential. Annual-account financial statements, registered roles and
+sub-entities are extracted from official registry APIs. Open-web source
+discovery, broad leadership coverage and PDF extraction remain incomplete. No
+official score, recall measurement or qualification is claimed. The organizer
+must accept and run the revised exact commit before it changes the entry of
+record.
