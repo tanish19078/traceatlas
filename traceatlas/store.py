@@ -41,11 +41,32 @@ class Store:
                 (item.get('source_class'), item.get('source_url'))
                 for item in result['evidence']
             }
-            old = {c.get('subject', c['field']): c for c in prior['claims']}
+            def prior_subject(claim):
+                subject = claim.get('subject', claim['field'])
+                value = claim.get('value')
+                if (claim.get('field') == 'financials' and isinstance(value, dict)
+                        and 'revenue' in value and 'metric' not in value):
+                    return subject + ':revenue'
+                return subject
+
+            def same_value(before, after):
+                if before['value'] == after['value']:
+                    return True
+                old_value, new_value = before.get('value'), after.get('value')
+                if (before.get('field') != 'financials' or after.get('field') != 'financials'
+                        or not isinstance(old_value, dict) or not isinstance(new_value, dict)
+                        or new_value.get('metric') != 'revenue'):
+                    return False
+                return all((old_value.get('revenue') if key == 'amount' else old_value.get(key))
+                           == new_value.get(key)
+                           for key in ('amount', 'period_start', 'period_end', 'currency',
+                                       'report_type', 'organisation_number'))
+
+            old = {prior_subject(c): c for c in prior['claims']}
             new = {c.get('subject', c['field']): c for c in result['claims']}
             for subject in sorted(old.keys() | new.keys()):
                 before, after = old.get(subject), new.get(subject)
-                if before and after and before['value'] == after['value']:
+                if before and after and same_value(before, after):
                     continue
                 if before and after is None:
                     source = prior_evidence.get(before['evidence_id'])
@@ -71,7 +92,7 @@ class Store:
             historical = prior.get('last_known', {}).get('claims', []) + prior['claims']
             stale = {c.get('subject', c['field']): c for c in historical
                      if c['field'] in ('website_identity', 'company_page', 'company_description', 'social_pages', 'leadership', 'locations', 'financials', 'jobs', 'legal_cases', 'news')
-                     and c.get('subject', c['field']) not in current}
+                     and prior_subject(c) not in current}
             if stale:
                 evidence = {e['id']: e for e in prior['evidence']
                             + prior.get('evidence_history', [])

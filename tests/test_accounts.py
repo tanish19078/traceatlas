@@ -6,9 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from traceatlas import core, registry, registry_extra
-from traceatlas.accounts import METRICS, extract, extract_v1
+from traceatlas.accounts import METRICS, extract, extract_v1, enrich
 from traceatlas.audit import verify
-from traceatlas.models import company_summary
+from traceatlas.models import company_summary, digest
 from tests.test_traceatlas import fixture
 
 
@@ -92,6 +92,15 @@ class AccountTests(unittest.TestCase):
         self.assertIn('no comparable prior period was available', summary)
         self.assertNotIn('year over year', summary)
 
+    def test_summary_does_not_compare_different_period_lengths(self):
+        latest = extract([account()], ORG, 'latest')
+        short = account(regnskapsperiode={'fraDato': '2023-07-01', 'tilDato': '2023-12-31'})
+        short['resultatregnskapResultat']['driftsresultat']['driftsinntekter']['sumDriftsinntekter'] = 1000
+        claims = latest + extract([short], ORG, 'short')
+        summary = company_summary({'legal_identity': {'name': 'Example AS'}, 'claims': claims})
+        self.assertIn('no comparable prior period was available', summary)
+        self.assertNotIn('year over year', summary)
+
     def test_financial_claims_survive_export_audit_and_tampering_fails(self):
         body = json.dumps([account()]).encode()
         with tempfile.TemporaryDirectory() as folder, \
@@ -113,6 +122,39 @@ class AccountTests(unittest.TestCase):
             claim['value']['amount']=999999
             path.write_text(json.dumps(row)+'\n')
             self.assertFalse(verify(folder)['passed'])
+
+    def test_v1_revenue_upgrades_without_a_false_removal(self):
+        registry_body=fixture()
+        account_body=json.dumps([account()]).encode()
+        evidence_id=digest(account_body)
+        with tempfile.TemporaryDirectory() as folder:
+            store=core.Store(folder)
+            try:
+                with patch.object(registry,'fetch',return_value=registry_body):
+                    first,_=core.research(ORG)
+                    second,_=core.research(ORG)
+                first['claims'].extend(extract_v1([account()],ORG,evidence_id))
+                first['availability']['financials']={'state':'available'}
+                first['evidence'].append({
+                    'id':evidence_id,'source_url':'https://data.brreg.no/regnskapsregisteret/regnskap/'+ORG,
+                    'retrieved_at':'2026-11-01T00:00:00+00:00','content_sha256':evidence_id,
+                    'snapshot_path':'snapshots/'+evidence_id+'.json','source_class':'official_accounts',
+                    'extractor_version':'official_accounts_v1','organisation_number':ORG,
+                    'synthetic':False,
+                })
+                store.save(first,[(registry_body,'.json'),(account_body,'.json')])
+                enrich(second,body=account_body)
+                saved=store.save(second,[(registry_body,'.json'),(account_body,'.json')])
+                financial_changes=[change for change in saved['refresh']['changes']
+                                   if change['field']=='financials']
+                self.assertTrue(financial_changes)
+                self.assertTrue(all(change['kind']=='added' for change in financial_changes))
+                self.assertNotIn('revenue',{
+                    change['after']['value']['metric'] for change in financial_changes})
+                self.assertFalse(any(claim['field']=='financials'
+                                     for claim in saved.get('last_known',{}).get('claims',[])))
+            finally:
+                store.close()
 
 
 if __name__ == '__main__':

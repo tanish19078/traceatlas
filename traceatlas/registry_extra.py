@@ -42,10 +42,31 @@ def _walk(value):
             stack.extend(current)
 
 
-def extract_roles(data, number, evidence_id):
+def _pointer_token(value):
+    return str(value).replace('~', '~0').replace('/', '~1')
+
+
+def _walk_with_pointer(value):
+    stack = [(value, '')]
+    visited = 0
+    while stack and visited < 20_000:
+        current, pointer = stack.pop()
+        visited += 1
+        if isinstance(current, dict):
+            yield current, pointer
+            for key, child in reversed(list(current.items())):
+                stack.append((child, pointer + '/' + _pointer_token(key)))
+        elif isinstance(current, list):
+            for index in range(len(current) - 1, -1, -1):
+                stack.append((current[index], pointer + '/' + str(index)))
+
+
+def _extract_roles(data, number, evidence_id, version):
     claims = []
     seen = set()
-    for item in _walk(data):
+    records = _walk_with_pointer(data) if version == 'brreg_roles_v2' else (
+        (item, None) for item in _walk(data))
+    for item, pointer in records:
         person = item.get('person')
         role = item.get('type')
         if not isinstance(person, dict) or not isinstance(role, dict):
@@ -65,15 +86,25 @@ def extract_roles(data, number, evidence_id):
         subject = 'leadership:' + key
         claims.append({'id': digest((number + subject).encode()), 'field': 'leadership',
             'subject': subject, 'value': value, 'evidence_id': evidence_id,
-            'json_pointer': None, 'reporting_period': None, 'effective_date': None,
-            'extraction_method': 'brreg_roles_v1'})
+            'json_pointer': pointer, 'reporting_period': None, 'effective_date': None,
+            'extraction_method': version})
     return claims
 
 
-def extract_locations(data, number, evidence_id):
+def extract_roles(data, number, evidence_id):
+    return _extract_roles(data, number, evidence_id, 'brreg_roles_v2')
+
+
+def extract_roles_v1(data, number, evidence_id):
+    return _extract_roles(data, number, evidence_id, 'brreg_roles_v1')
+
+
+def _extract_locations(data, number, evidence_id, version):
     claims = []
     seen = set()
-    for item in _walk(data):
+    records = _walk_with_pointer(data) if version == 'brreg_subunits_v2' else (
+        (item, None) for item in _walk(data))
+    for item, pointer in records:
         if item.get('overordnetEnhet') != number or not isinstance(item.get('organisasjonsnummer'), str):
             continue
         address = item.get('beliggenhetsadresse') or item.get('forretningsadresse') or {}
@@ -90,9 +121,17 @@ def extract_locations(data, number, evidence_id):
         subject = 'location:' + item['organisasjonsnummer']
         claims.append({'id': digest((number + subject + key).encode()), 'field': 'locations',
             'subject': subject, 'value': value, 'evidence_id': evidence_id,
-            'json_pointer': None, 'reporting_period': None, 'effective_date': None,
-            'extraction_method': 'brreg_subunits_v1'})
+            'json_pointer': pointer, 'reporting_period': None, 'effective_date': None,
+            'extraction_method': version})
     return claims
+
+
+def extract_locations(data, number, evidence_id):
+    return _extract_locations(data, number, evidence_id, 'brreg_subunits_v2')
+
+
+def extract_locations_v1(data, number, evidence_id):
+    return _extract_locations(data, number, evidence_id, 'brreg_subunits_v1')
 
 
 def _enrich_field(result, field, url, timeout, extractor, source_class, version):
@@ -120,8 +159,8 @@ def enrich(result, timeout=12):
     roles_url = BASE + 'enheter/' + number + '/roller'
     locations_url = BASE + 'underenheter?' + urlencode({'overordnetEnhet': number, 'size': 100})
     bodies = []
-    for args in ((result, 'leadership', roles_url, timeout, extract_roles, 'official_registry_roles', 'brreg_roles_v1'),
-                 (result, 'locations', locations_url, timeout, extract_locations, 'official_registry_locations', 'brreg_subunits_v1')):
+    for args in ((result, 'leadership', roles_url, timeout, extract_roles, 'official_registry_roles', 'brreg_roles_v2'),
+                 (result, 'locations', locations_url, timeout, extract_locations, 'official_registry_locations', 'brreg_subunits_v2')):
         body = _enrich_field(*args)
         if body is not None:
             bodies.append((body, '.json'))

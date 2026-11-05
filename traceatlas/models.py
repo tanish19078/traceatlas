@@ -3,7 +3,7 @@ import hashlib
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 VERSION = '0.6.0'
 BASE = 'https://data.brreg.no/enhetsregisteret/api/enheter/'
@@ -108,7 +108,20 @@ def company_summary(result):
                     or item.get('currency') != latest.get('currency')):
                 continue
             try:
-                if int(str(latest['period_end'])[:4]) - int(str(item['period_end'])[:4]) == 1:
+                latest_start = date.fromisoformat(latest['period_start'])
+                latest_end = date.fromisoformat(latest['period_end'])
+                prior_start = date.fromisoformat(item['period_start'])
+                prior_end = date.fromisoformat(item['period_end'])
+                comparable_lengths = abs(
+                    (latest_end - latest_start).days - (prior_end - prior_start).days
+                ) <= 7
+                try:
+                    prior_anniversary = prior_end.replace(year=latest_end.year)
+                except ValueError:
+                    prior_anniversary = prior_end.replace(year=latest_end.year, day=28)
+                comparable_endpoints = abs((latest_end - prior_anniversary).days) <= 7
+                if (latest_end.year - prior_end.year == 1
+                        and comparable_lengths and comparable_endpoints):
                     comparable = item
                     break
             except (KeyError, TypeError, ValueError):

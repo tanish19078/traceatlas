@@ -80,16 +80,22 @@ def validate_result(result, root, historical=False):
             require(claim in supported, 'unsupported annual accounts claim')
             value = claim['value']
         elif source_class in ('official_registry_roles', 'official_registry_locations'):
-            from .registry_extra import BASE as REGISTRY_BASE, extract_locations, extract_roles
+            from .registry_extra import (BASE as REGISTRY_BASE, extract_locations,
+                                         extract_locations_v1, extract_roles,
+                                         extract_roles_v1)
             expected_url = REGISTRY_BASE + ('enheter/' + result['organisation_number'] + '/roller' if source_class == 'official_registry_roles' else 'underenheter?overordnetEnhet=' + result['organisation_number'] + '&size=100')
             require(item['source_url'] == expected_url, 'wrong registry detail source URL')
             require(item.get('organisation_number') == result['organisation_number'], 'wrong registry detail identity')
             if source_class == 'official_registry_roles':
-                require(item.get('extractor_version') == 'brreg_roles_v1', 'unknown roles extractor')
-                supported = extract_roles(json.loads(body), result['organisation_number'], key)
+                version = item.get('extractor_version')
+                require(version in ('brreg_roles_v1', 'brreg_roles_v2'), 'unknown roles extractor')
+                supported = (extract_roles_v1 if version == 'brreg_roles_v1' else extract_roles)(
+                    json.loads(body), result['organisation_number'], key)
             else:
-                require(item.get('extractor_version') == 'brreg_subunits_v1', 'unknown locations extractor')
-                supported = extract_locations(json.loads(body), result['organisation_number'], key)
+                version = item.get('extractor_version')
+                require(version in ('brreg_subunits_v1', 'brreg_subunits_v2'), 'unknown locations extractor')
+                supported = (extract_locations_v1 if version == 'brreg_subunits_v1' else extract_locations)(
+                    json.loads(body), result['organisation_number'], key)
             require(claim in supported, 'unsupported registry detail claim')
             value = claim['value']
         elif source_class == 'verified_social_page':

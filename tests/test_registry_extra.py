@@ -1,5 +1,6 @@
 import unittest
-from traceatlas.registry_extra import extract_locations, extract_roles
+from traceatlas.registry_extra import (extract_locations, extract_locations_v1,
+                                       extract_roles, extract_roles_v1)
 from traceatlas.models import company_summary
 from traceatlas.web import Document, _website_guesses, verify_site_owner
 
@@ -17,7 +18,10 @@ class RegistryDetailTests(unittest.TestCase):
         claims = extract_roles(data, ORG, 'evidence')
         self.assertEqual(len(claims), 1)
         self.assertEqual(claims[0]['value'], {'name': 'Ada M Nord', 'role': 'Daglig leder'})
+        self.assertEqual(claims[0]['json_pointer'],'/rollegrupper/0/roller/0')
+        self.assertEqual(claims[0]['extraction_method'],'brreg_roles_v2')
         self.assertNotIn('secret', str(claims))
+        self.assertIsNone(extract_roles_v1(data,ORG,'evidence')[0]['json_pointer'])
 
     def test_locations_require_exact_parent_number(self):
         data = {'_embedded': {'underenheter': [
@@ -28,16 +32,19 @@ class RegistryDetailTests(unittest.TestCase):
         claims = extract_locations(data, ORG, 'evidence')
         self.assertEqual(len(claims), 1)
         self.assertEqual(claims[0]['value']['organisation_number'], '111111111')
+        self.assertEqual(claims[0]['json_pointer'],'/_embedded/underenheter/0')
+        self.assertEqual(claims[0]['extraction_method'],'brreg_subunits_v2')
+        self.assertIsNone(extract_locations_v1(data,ORG,'evidence')[0]['json_pointer'])
 
     def test_summary_compares_same_report_type_and_currency(self):
         result = {'legal_identity': {'name': 'Example AS'}, 'claims': [
             {'field': 'company_description', 'value': 'We design and build energy efficient commercial properties in Oslo.'},
-            {'field': 'financials', 'value': {'period_end': '2025-12-31', 'revenue': 120,
-             'currency': 'NOK', 'report_type': 'SELSKAP'}},
-            {'field': 'financials', 'value': {'period_end': '2024-12-31', 'revenue': 100,
-             'currency': 'NOK', 'report_type': 'SELSKAP'}},
-            {'field': 'financials', 'value': {'period_end': '2025-12-31', 'revenue': 300,
-             'currency': 'NOK', 'report_type': 'KONSERN'}},
+            {'field': 'financials', 'value': {'period_start': '2025-01-01', 'period_end': '2025-12-31', 'revenue': 120,
+              'currency': 'NOK', 'report_type': 'SELSKAP'}},
+            {'field': 'financials', 'value': {'period_start': '2024-01-01', 'period_end': '2024-12-31', 'revenue': 100,
+              'currency': 'NOK', 'report_type': 'SELSKAP'}},
+            {'field': 'financials', 'value': {'period_start': '2025-01-01', 'period_end': '2025-12-31', 'revenue': 300,
+              'currency': 'NOK', 'report_type': 'KONSERN'}},
         ]}
         summary = company_summary(result)
         self.assertIn('up 20.0% year over year', summary)
