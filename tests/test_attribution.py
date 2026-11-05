@@ -27,7 +27,9 @@ class AttributionTests(unittest.TestCase):
         conflict=body + '<meta property="og:description" content="A different business description that conflicts with the first page summary.">'
         self.assertEqual(extract_website_description(Document(conflict.encode()),ORG,NAME,'https://example.com/','evidence'),[])
     def test_job_listing_homepage_and_search_are_not_single_ads(self):
-        for url in ['https://example.com/','https://example.com/careers','https://example.com/jobs?q=engineer']:
+        for url in ['https://example.com/','https://example.com/careers',
+                    'https://example.com/jobb','https://example.com/stillinger',
+                    'https://example.com/jobs?q=engineer']:
             self.assertEqual(extract_jobs(document(job(url=url)),ORG,NAME,url,'key',STAMP),[])
     def test_job_requires_same_page_url_and_visible_description(self):
         for value in [job(url='https://parent.example.com/jobs/1'),job(description='Apply now'),job(description='A hidden description that does not appear in visible page content at all.')]:

@@ -112,7 +112,7 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
         from .search import LIST_PRICE_USD_PER_QUERY
         result['operations'] = {'requests': request_budget.by_input.get(index, 0),
                                 'runtime_ms': round((time.monotonic() - began) * 1000, 3),
-                                'third_party_cost_usd': round(result.get('search_research', {}).get('successful_queries', 0) * LIST_PRICE_USD_PER_QUERY, 6)}
+                                'third_party_cost_usd': round(result.get('search_research', {}).get('queries', 0) * LIST_PRICE_USD_PER_QUERY, 6)}
         return result, body
     results = [recovered.get(index) for index in range(len(numbers))]
     try:
@@ -162,9 +162,12 @@ def _run_batch(numbers, root, fixture_dir, workers, budget, timeout, allowed_dom
                   'legal_requests': sum(r.get('legal_research', {}).get('requests', 0) for i, r in enumerate(results) if i not in recovered),
                   'legal_reports': sum(r.get('legal_research', {}).get('reports_found', 0) for r in results),
                   'website_pages_verified': sum(r.get('website_research', {}).get('pages_verified', 0) for r in results),
-                  'search_queries': sum(r.get('search_research', {}).get('queries', 0) for r in results),
+                  'search_queries': sum(r.get('search_research', {}).get('queries', 0)
+                                        for i, r in enumerate(results) if i not in recovered),
                   'external_coverage_measured': False, 'official_score': None,
-                  'external_api_cost_usd': round(sum(r.get('operations', {}).get('third_party_cost_usd', 0) for r in results), 6), 'models': [],
+                  'external_api_cost_usd': round(sum(
+                      r.get('operations', {}).get('third_party_cost_usd', 0)
+                      for i, r in enumerate(results) if i not in recovered), 6), 'models': [],
                   'external_api_cost_basis': 'Brave Search current listed rate; credits and account-specific pricing are not reflected.',
                   'limitations': ['Website research is opt-in through reviewed hostnames, limited name/town .no guesses, or Brave Search API candidates; legal sources remain allowlisted.',
                                   'Search snippets are candidate discovery only. Company pages and social profiles require exact identity checks before publication.',

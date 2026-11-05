@@ -37,11 +37,13 @@ def extract_jobs(document, number, legal_name, source_url, evidence_id, retrieve
     """Publish only attributed, dated records; absence never implies zero jobs."""
     if not legacy:
         from urllib.parse import urlsplit, parse_qs
-        from .web import normalize_url, verify_site_owner, Document
+        from .web import normalize_url, verify_site_owner, Document, JOB_INDEXES
         if verify_site_owner(document, number, legal_name) is None:
             return []
         parsed = urlsplit(source_url)
-        if not parsed.path.strip('/') or parsed.path.rstrip('/').rsplit('/', 1)[-1].casefold() in ('jobs', 'careers', 'karriere', 'ledige-stillinger', 'search') or any(key in parse_qs(parsed.query) for key in ('q', 'search', 'query')):
+        if (not parsed.path.strip('/')
+                or parsed.path.rstrip('/').rsplit('/', 1)[-1].casefold() in JOB_INDEXES | {'search'}
+                or any(key in parse_qs(parsed.query) for key in ('q', 'search', 'query'))):
             return []
         postings = [node for block in document.json_ld for _, node in schema_nodes(block)
                     if any(kind in ('JobPosting', 'https://schema.org/JobPosting', 'http://schema.org/JobPosting') for kind in (node.get('@type') if isinstance(node.get('@type'), list) else [node.get('@type')]))]

@@ -412,6 +412,7 @@ def _enrich_social(result, links, base_url, allowed_domains, deadline, session_f
     candidates = [item for item in result.get('candidates', []) if item.get('kind') == 'social_page']
     links.extend(item['value'] for item in candidates if isinstance(item.get('value'), str))
     verified_count = 0
+    attempted = 0
     for href in links:
         if verified_count >= 3:
             break
@@ -424,6 +425,7 @@ def _enrich_social(result, links, base_url, allowed_domains, deadline, session_f
             if root_host not in SOCIAL_HOSTS or (social_host not in allowed_domains and not discover) or social_url in seen:
                 continue
             seen.add(social_url)
+            attempted += 1
             candidate_session = session_factory(social_url, deadline)
             social_body = candidate_session.page(social_url)
             requests += candidate_session.requests
@@ -472,6 +474,12 @@ def _enrich_social(result, links, base_url, allowed_domains, deadline, session_f
             candidate = next((item for item in candidates if item.get('value') == href), None)
             if candidate:
                 candidate['status'] = 'rejected'
+    if verified_count == 0 and (base_url or candidates):
+        result['availability']['social_pages'] = {
+            'state': 'not_available',
+            'reason': ('no_exact_social_identity_on_checked_candidates' if attempted
+                       else 'no_social_profile_link_on_verified_site'),
+        }
     return blobs, requests + failed_requests
 
 
@@ -643,6 +651,12 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
                     'extraction_method': 'visible_text_v2'})
                 result['availability'][field] = {'state': 'available'}
                 result['website_research']['pages_verified'] += 1
+            for field in ('jobs', 'news'):
+                if result['availability'].get(field, {}).get('state') != 'available':
+                    result['availability'][field] = {
+                        'state': 'not_available',
+                        'reason': 'no_supported_' + field + '_on_checked_pages',
+                    }
         social_blobs, social_requests = _enrich_social(
             result, social_links, url if verified else None, allowed_domains,
             deadline, session_factory, discover, evidence_ids)

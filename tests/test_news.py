@@ -45,8 +45,16 @@ class NewsTests(unittest.TestCase):
     def test_menu_label_or_product_page_is_not_a_post(self):
         for body in [page(visible='<nav>News</nav>'),page(article(**{'@type':'Product'}))]:self.assertEqual(extract(body),[])
     def test_news_index_and_wrong_canonical_url_are_rejected(self):
-        self.assertEqual(extract(url='https://example.com/news'),[])
+        for path in ('news','nyheter','blogg','aktuelt','press','pressemeldinger'):
+            self.assertEqual(extract(url='https://example.com/'+path),[])
         self.assertEqual(extract(page(article(url='https://example.com/news/another'))),[])
+
+    def test_incomplete_schema_falls_back_to_visible_article(self):
+        partial={'@type':'NewsArticle','url':URL,'headline':HEADLINE}
+        body=visible_article()+b'<script type="application/ld+json">'+json.dumps(partial).encode()+b'</script>'
+        claims=extract(body)
+        self.assertEqual(len(claims),1)
+        self.assertEqual(claims[0]['extraction_method'],'visible_html_news_v1')
     def test_parent_news_and_group_article_cannot_be_subsidiary_activity(self):
         self.assertEqual(extract(page(article(about={'name':'PARENT HOLDING AS'}))),[])
         self.assertEqual(extract(page(article(about={'name':NAME,'legalName':'PARENT HOLDING AS'}))),[])

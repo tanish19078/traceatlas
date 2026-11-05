@@ -132,6 +132,9 @@ class WebsiteTests(unittest.TestCase):
                 start,end = claim['text_span']
                 self.assertEqual(claim['value'],sources[claim['evidence_id']][start:end])
         self.assertEqual(row['availability']['jobs']['state'],'not_available')
+        self.assertEqual(row['availability']['jobs']['reason'],'no_supported_jobs_on_checked_pages')
+        self.assertEqual(row['availability']['news']['reason'],'no_supported_news_on_checked_pages')
+        self.assertEqual(row['availability']['social_pages']['reason'],'no_social_profile_link_on_verified_site')
 
     def test_unverified_page_publishes_no_website_claims(self):
         class Wrong(FakeSession):

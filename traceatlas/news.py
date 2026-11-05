@@ -3,14 +3,16 @@ import re
 from urllib.parse import urlsplit, parse_qs
 from .models import canonical, digest
 from .jobs import schema_nodes, parsed_date, normalized_name
-from .web import normalize_url, verify_site_owner, Document, ORG_PATTERN
+from .web import normalize_url, verify_site_owner, Document, ORG_PATTERN, NEWS_INDEXES
 
 
 def extract_news(document, number, legal_name, source_url, evidence_id, retrieved_at):
     if verify_site_owner(document, number, legal_name) is None or len(document.article_texts) != 1:
         return []
     parsed = urlsplit(source_url)
-    if not parsed.path.strip('/') or parsed.path.rstrip('/').rsplit('/', 1)[-1].casefold() in ('news', 'blog', 'products', 'search') or any(k in parse_qs(parsed.query) for k in ('q','search','query')):
+    if (not parsed.path.strip('/')
+            or parsed.path.rstrip('/').rsplit('/', 1)[-1].casefold() in NEWS_INDEXES | {'products', 'search'}
+            or any(k in parse_qs(parsed.query) for k in ('q','search','query'))):
         return []
     nodes = [(block_index, pointer, node) for block_index, block in enumerate(document.json_ld)
              for pointer, node in schema_nodes(block)
@@ -23,8 +25,13 @@ def extract_news(document, number, legal_name, source_url, evidence_id, retrieve
     if len(unique) != 1:
         return []
     block, pointer, node = next(iter(unique.values()))
+    fallback = lambda: _extract_visible_article(
+        document, number, legal_name, source_url, evidence_id, retrieved_at)
+    target = node.get('url', node.get('@id'))
+    if target is None or node.get('datePublished') is None:
+        return fallback()
     try:
-        if normalize_url(node.get('url',node.get('@id'))) != normalize_url(source_url):
+        if normalize_url(target) != normalize_url(source_url):
             return []
         posted = parsed_date(node.get('datePublished'))
         if posted > parsed_date(retrieved_at):
@@ -36,8 +43,10 @@ def extract_news(document, number, legal_name, source_url, evidence_id, retrieve
     headline = node.get('headline')
     article = document.article_texts[0]
     if not isinstance(headline,str) or not 15 <= len(headline.strip()) <= 300 or normalized_name(headline) not in normalized_name(article) or len(article) < 80:
-        return []
+        return fallback()
     about = node.get('about')
+    if about is None:
+        return fallback()
     if not isinstance(about,dict) or normalized_name(about.get('legalName', about.get('name'))) != normalized_name(legal_name):
         return []
     tax_id = about.get('taxID',about.get('vatID'))

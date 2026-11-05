@@ -137,6 +137,9 @@ class SearchTests(unittest.TestCase):
             self.assertEqual(report['external_api_cost_usd'], 0.005)
             self.assertIn('listed rate', report['external_api_cost_basis'])
             self.assertTrue(verify(folder)['passed'])
+            resumed=core.run_batch([ORG],folder,workers=1,search_websites=True,resume=True)
+            self.assertEqual(resumed['search_queries'],0)
+            self.assertEqual(resumed['external_api_cost_usd'],0)
 
     def test_social_evidence_round_trips_through_json_audit(self):
         from traceatlas.audit import verify

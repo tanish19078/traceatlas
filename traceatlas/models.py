@@ -15,7 +15,8 @@ FIELDS = {
     'business_activity': 'aktivitet', 'bankrupt': 'konkurs',
     'in_liquidation': 'underAvvikling',
 }
-EXTERNAL = ['website_identity', 'company_description', 'leadership', 'locations', 'financials', 'jobs', 'news', 'legal_cases']
+EXTERNAL = ['website_identity', 'company_description', 'social_pages', 'leadership',
+            'locations', 'financials', 'jobs', 'news', 'legal_cases']
 
 
 def now():
