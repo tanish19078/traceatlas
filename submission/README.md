@@ -141,7 +141,7 @@ Python uses the PSF licence and bundled notices. Build-only setuptools 84.0.0
 uses MIT; checkout/setup-python are pinned official action releases. TraceAtlas
 remains author-owned public code without an asserted general reuse licence.
 
-The 168 offline tests include bulk parsing/provenance, contract integrity,
+The 177 offline tests include bulk parsing/provenance, contract integrity,
 concurrent request caps, Retry-After, parent attribution, article/job validation,
 refresh, resume and worker termination; one Windows symlink test is skipped
 when the runner lacks symlink privilege. The documented 100-company offline

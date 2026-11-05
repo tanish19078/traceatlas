@@ -231,7 +231,7 @@ python -m examples.publish_site
 python -O -m traceatlas.audit runs/demo --expected-count 3
 ```
 
-The 168-test suite covers company matching, source integrity, financial statements,
+The 177-test suite covers company matching, source integrity, financial statements,
 legal-report dates, refresh history, recovery, output escaping and network
 safeguards. CI runs on
 Python 3.11, 3.12 and 3.13 and checks installation outside the checkout.
