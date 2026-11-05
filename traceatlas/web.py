@@ -19,6 +19,7 @@ MAX_BYTES = 1_000_000
 ORG_PATTERN = re.compile(r'\b(?:organisasjonsnummer|organisasjonsnr|org\.?\s*(?:nr|nummer)\.?)\s*[:.]?\s*(\d{3}[ .]?\d{3}[ .]?\d{3})(?!\d)', re.I)
 PRIORITIES = ('nyheter', 'news', 'blogg', 'blog', 'aktuelt', 'press', 'karriere', 'careers', 'jobs', 'kontakt', 'contact', 'om-oss', 'about')
 NEWS_INDEXES = {'news', 'nyheter', 'blog', 'blogg', 'aktuelt', 'press', 'pressemeldinger'}
+JOB_INDEXES = {'jobs', 'careers', 'karriere', 'jobb', 'stillinger', 'ledige-stillinger'}
 SOCIAL_HOSTS = {'facebook.com', 'instagram.com', 'linkedin.com', 'x.com', 'twitter.com', 'youtube.com'}
 _HOSTS = {}
 _HOSTS_LOCK = threading.Lock()
@@ -56,6 +57,11 @@ def normalize_url(value):
 def _news_index(url):
     path = urlsplit(url).path.rstrip('/')
     return bool(path) and path.rsplit('/', 1)[-1].casefold() in NEWS_INDEXES
+
+
+def _job_index(url):
+    path = urlsplit(url).path.rstrip('/')
+    return bool(path) and path.rsplit('/', 1)[-1].casefold() in JOB_INDEXES
 
 
 def _link_priority(href):
@@ -513,25 +519,70 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
             pages = [(url, body, document, proof)]
             seen = {url}
             root_links = [href for href in document.links[:30] if _link_priority(href) < len(PRIORITIES)]
-            queue = [(url, href) for href in sorted(root_links, key=_link_priority)]
-            while queue and len(pages) < 5:
-                base_url, href = queue.pop(0)
+            news_indexes, job_indexes, other_links = [], [], []
+            news_details, job_details = [], []
+            if _news_index(url):
+                news_details.extend((url, href) for href in document.links[:30]
+                                    if href and not href.startswith(('mailto:', 'tel:', '#')))
+            elif _job_index(url):
+                job_details.extend((url, href) for href in document.links[:30]
+                                   if href and not href.startswith(('mailto:', 'tel:', '#')))
+            else:
+                for href in sorted(root_links, key=_link_priority):
+                    candidate_url = urljoin(url, href)
+                    if _news_index(candidate_url):
+                        news_indexes.append((url, href))
+                    elif _job_index(candidate_url):
+                        job_indexes.append((url, href))
+                    else:
+                        other_links.append((url, href))
+
+            followup_attempts = 0
+
+            def crawl(base_url, href):
+                nonlocal followup_attempts
+                if followup_attempts >= 4:
+                    return None
                 try:
                     page_url = normalize_url(urljoin(base_url, href))
                     if page_url in seen or urlsplit(page_url).netloc != host:
-                        continue
+                        return None
                     seen.add(page_url)
+                    followup_attempts += 1
                     page_body = session.page(page_url)
                     page_doc = Document(page_body)
                     page_proof = verify_site_owner(page_doc, number, legal_name)
                     if page_proof:
                         pages.append((page_url, page_body, page_doc, page_proof))
-                        if _news_index(page_url):
-                            story_links = [link for link in page_doc.links[:30] if link and not link.startswith(('mailto:', 'tel:', '#'))]
-                            story_links.sort(key=_story_link_priority)
-                            queue = [(page_url, link) for link in story_links] + queue
+                        return page_url, page_doc
                 except (AccessError, OSError, ValueError, http.client.HTTPException) as exc:
                     result['website_research']['errors'].append(str(exc) if isinstance(exc, AccessError) else type(exc).__name__)
+                return None
+
+            # Give news and careers one index attempt each before either family
+            # can consume the remaining site budget with detail pages.
+            for base_url, href in news_indexes[:1] + job_indexes[:1]:
+                crawled = crawl(base_url, href)
+                if not crawled:
+                    continue
+                page_url, page_doc = crawled
+                links = [link for link in page_doc.links[:30]
+                         if link and not link.startswith(('mailto:', 'tel:', '#'))]
+                links.sort(key=_story_link_priority)
+                target = news_details if _news_index(page_url) else job_details
+                target.extend((page_url, link) for link in links)
+
+            detail_links = []
+            for index in range(max(len(news_details), len(job_details))):
+                if index < len(news_details):
+                    detail_links.append(news_details[index])
+                if index < len(job_details):
+                    detail_links.append(job_details[index])
+            remaining_indexes = news_indexes[1:] + job_indexes[1:]
+            for base_url, href in detail_links + other_links + remaining_indexes:
+                if followup_attempts >= 4 or len(pages) >= 5:
+                    break
+                crawl(base_url, href)
             for page_url, page_body, page_doc, page_proof in pages:
                 social_links.extend(page_doc.links)
                 key = hashlib.sha256(page_body).hexdigest()

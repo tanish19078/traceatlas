@@ -174,6 +174,47 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(len(w.enrich(row,[HOST],time.monotonic()+10,Child)),1)
         self.assertEqual(row['website_research']['pages_verified'],1)
 
+    def test_news_index_cannot_starve_careers_detail(self):
+        news='https://example.com/news'
+        careers='https://example.com/careers'
+        job='https://example.com/jobs/synthetic-engineer'
+        story='https://example.com/news/story-0'
+        root=PAGE.replace(
+            b'<a href="/contact">Contact</a>',
+            b'<a href="/news">News</a><a href="/careers">Careers</a>',
+        )
+        news_links=b''.join(
+            b'<a href="/news/story-'+str(index).encode()+b'">Story</a>'
+            for index in range(30)
+        )
+        calls=[]
+        class Balanced(FakeSession):
+            def page(self,url):
+                self.requests+=1;calls.append(url)
+                if url == URL:return root
+                if url == news:return PAGE+news_links
+                if url == careers:return PAGE.replace(b'/contact',b'/jobs/synthetic-engineer')
+                return PAGE
+        row=result()
+        w.enrich(row,[HOST],time.monotonic()+10,Balanced)
+        self.assertEqual(calls[:3],[URL,news,careers])
+        self.assertIn(story,calls)
+        self.assertIn(job,calls)
+        self.assertEqual(len(calls),5)
+
+    def test_unverified_careers_index_is_not_expanded(self):
+        calls=[]
+        class WrongCareers(FakeSession):
+            def page(self,url):
+                self.requests+=1;calls.append(url)
+                if url == URL:return PAGE.replace(b'/contact',b'/careers')
+                if url.endswith('/careers'):
+                    return b'<h1>UNRELATED COMPANY</h1><a href="/jobs/synthetic-engineer">Role</a>'
+                return PAGE
+        row=result()
+        w.enrich(row,[HOST],time.monotonic()+10,WrongCareers)
+        self.assertEqual(calls,[URL,'https://example.com/careers'])
+
 
 class WebsiteIntegrationTests(unittest.TestCase):
     def test_company_site_description_flows_to_summary_and_audit(self):

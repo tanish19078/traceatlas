@@ -1,6 +1,7 @@
 """Structured postings require exact employer attribution and reproducible evidence."""
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -68,6 +69,31 @@ class JobTests(unittest.TestCase):
 
     def test_multiple_ads_on_one_page_are_not_individual_job_evidence(self):
         self.assertEqual(extract([job(title='Role '+str(i)) for i in range(100)]),[])
+
+    def test_crawler_follows_careers_index_to_individual_job(self):
+        careers='https://example.com/careers'
+        body=PAGE+DESCRIPTION.encode()+b'<script type="application/ld+json">'+json.dumps(job()).encode()+b'</script>'
+        calls=[]
+        class Session:
+            def __init__(self,origin,deadline):self.requests=1
+            def page(self,url):
+                self.requests+=1;calls.append(url)
+                if url == 'https://example.com/':
+                    return PAGE.replace(b'/contact',b'/careers')
+                if url == careers:
+                    return PAGE.replace(
+                        b'/contact',
+                        b'https://jobs.example.org/untrusted-role"></a><a href="/jobs/synthetic-engineer',
+                    )
+                return body
+        with patch.object(registry,'fetch',return_value=fixture(hjemmeside=HOST)):
+            row=core.research(ORG)[0]
+        blobs=web.enrich(row,[HOST],time.monotonic()+10,Session)
+        claim=next(item for item in row['claims'] if item['field']=='jobs')
+        self.assertEqual(claim['value']['title'],'Synthetic Engineer')
+        self.assertEqual(row['availability']['jobs']['state'],'available')
+        self.assertEqual(calls,['https://example.com/',careers,DETAIL])
+        self.assertEqual(len(blobs),3)
 
     def test_job_claim_survives_export_audit_and_tampering_fails(self):
         body=PAGE+DESCRIPTION.encode()+b'<script type="application/ld+json">'+json.dumps(job()).encode()+b'</script>'
