@@ -190,6 +190,21 @@ class WebsiteTests(unittest.TestCase):
         ]:
             self.assertIsNone(w.verify_social_identity(w.Document(page),ORG,'SYNTHETIC TEST COMPANY'))
 
+    def test_rejected_social_candidates_are_attempt_capped(self):
+        social_links=b''.join(
+            b'<a href="https://www.facebook.com/example-'+str(index).encode()+b'">Social</a>'
+            for index in range(6)
+        )
+        calls=[]
+        class RejectedSocial(FakeSession):
+            def page(self,url):
+                self.requests+=1;calls.append(url)
+                return b'<h1>UNRELATED COMPANY</h1>' if 'facebook.com' in url else PAGE+social_links
+        row=result()
+        w.enrich(row,[HOST],time.monotonic()+10,RejectedSocial,discover=True)
+        self.assertEqual(len([url for url in calls if 'facebook.com' in url]),3)
+        self.assertEqual(row['availability']['social_pages']['state'],'not_available')
+
     def test_unverified_child_does_not_inherit_root_identity(self):
         class Child(FakeSession):
             def page(self,url):

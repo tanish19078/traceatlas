@@ -83,7 +83,9 @@ class JobTests(unittest.TestCase):
                 if url == careers:
                     return PAGE.replace(
                         b'/contact',
-                        b'https://jobs.example.org/untrusted-role"></a><a href="/jobs/synthetic-engineer',
+                        b'/privacy"></a><a href="/about"></a><a href="/contact"></a>'
+                        b'<a href="https://jobs.example.org/untrusted-role"></a>'
+                        b'<a href="/jobs/synthetic-engineer',
                     )
                 return body
         with patch.object(registry,'fetch',return_value=fixture(hjemmeside=HOST)):

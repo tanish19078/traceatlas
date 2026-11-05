@@ -11,7 +11,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
 USER_AGENT = 'TraceAtlas'
@@ -72,6 +72,19 @@ def _link_priority(href):
 def _story_link_priority(href):
     priority = _link_priority(href)
     return priority if priority < len(PRIORITIES) else -1
+
+
+def _detail_link_allowed(href):
+    parsed = urlsplit(href)
+    tail = parsed.path.rstrip('/').rsplit('/', 1)[-1].casefold()
+    if not tail or tail in {
+        'about', 'om-oss', 'contact', 'kontakt', 'privacy', 'personvern',
+        'terms', 'vilkar', 'search', 'sok',
+    }:
+        return False
+    if re.search(r'\.(?:css|js|jpe?g|png|gif|svg|webp|ico|pdf|zip)$', tail):
+        return False
+    return not any(key in parse_qs(parsed.query) for key in ('q', 'query', 'search'))
 
 
 def public_addresses(host):
@@ -414,7 +427,7 @@ def _enrich_social(result, links, base_url, allowed_domains, deadline, session_f
     verified_count = 0
     attempted = 0
     for href in links:
-        if verified_count >= 3:
+        if verified_count >= 3 or attempted >= 3:
             break
         candidate_session = None
         counted_requests = False
@@ -593,7 +606,8 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
                     continue
                 page_url, page_doc = crawled
                 links = [link for link in page_doc.links[:30]
-                         if link and not link.startswith(('mailto:', 'tel:', '#'))]
+                         if link and not link.startswith(('mailto:', 'tel:', '#'))
+                         and _detail_link_allowed(link)]
                 links.sort(key=_story_link_priority)
                 target = news_details if _news_index(page_url) else job_details
                 target.extend((page_url, link) for link in links)
