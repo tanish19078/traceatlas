@@ -118,6 +118,7 @@ class StorageTests(unittest.TestCase):
             {item['id'] for item in result['evidence_history']},
             {change['before']['evidence_id']},
         )
+        self.assertIn('Latest refresh changes: registered employees changed',result['summary'])
 
     def test_failed_refresh_preserves_last_success(self):
         self.save_fixture()
@@ -125,6 +126,11 @@ class StorageTests(unittest.TestCase):
         self.assertTrue(result['last_known']['claims'])
         self.assertEqual(result['claims'], [])
         self.assertEqual(result['state'], 'blocked')
+        from traceatlas.view import render
+        render([result], self.root/'history.html')
+        page=(self.root/'history.html').read_text()
+        self.assertIn('Last verified facts',page)
+        self.assertIn('SYNTHETIC TEST COMPANY',page)
         self.assertEqual(self.save_fixture()['refresh']['changes'], [])
 
     def test_disappearing_field_is_not_asserted_as_real_world_removal(self):
@@ -177,8 +183,32 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(report['mode'], 'fixture')
             self.assertTrue(result['evidence'][0]['synthetic'])
             self.assertIn('toggle-label',page)
+            self.assertIn('Open company profile',page)
             self.assertIn('Synthetic fixture',page)
             self.assertNotIn('https://data.brreg.no/enhetsregisteret/api/enheter/'+ORG,page)
+
+    def test_only_audited_source_classes_get_clickable_links(self):
+        from traceatlas.view import _safe_source
+        self.assertTrue(_safe_source(
+            'https://data.brreg.no/regnskapsregisteret/regnskap/'+ORG,
+            {'source_class':'official_accounts'},
+        ))
+        self.assertTrue(_safe_source(
+            'https://data.brreg.no/enhetsregisteret/api/underenheter?overordnetEnhet='+ORG,
+            {'source_class':'official_registry_locations'},
+        ))
+        self.assertTrue(_safe_source(
+            'https://www.linkedin.com/company/example',
+            {'source_class':'verified_social_page'},
+        ))
+        self.assertFalse(_safe_source(
+            'https://data.brreg.no.evil.example/'+ORG,
+            {'source_class':'official_accounts'},
+        ))
+        self.assertFalse(_safe_source(
+            'https://example.com/company/example',
+            {'source_class':'verified_social_page'},
+        ))
 
     def test_one_storage_failure_does_not_drop_other_results(self):
         save = t.Store.save

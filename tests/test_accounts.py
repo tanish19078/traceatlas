@@ -104,6 +104,9 @@ class AccountTests(unittest.TestCase):
             evidence=next(item for item in contract['evidence']
                           if item['native_source_class']=='official_accounts')
             self.assertIn('150',evidence['claim_span'])
+            page=(Path(folder)/'index.html').read_text()
+            self.assertIn('<strong>Annual Result</strong>',page)
+            self.assertIn('/resultatregnskapResultat/aarsresultat',page)
             path=Path(folder)/'profiles.jsonl';row=json.loads(path.read_text())
             claim=next(item for item in row['claims']
                        if item['field']=='financials' and item['value']['metric']=='annual_result')

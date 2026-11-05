@@ -84,6 +84,9 @@ class Store:
                                    'claims': prior['claims'] + prior.get('last_known', {}).get('claims', []),
                                    'evidence': prior['evidence'] + prior.get('last_known', {}).get('evidence', [])}
             result['summary'] = 'Refresh unsuccessful; previous supported facts retained as last_known, not current.'
+        elif result['state'] == 'available':
+            from .models import company_summary
+            result['summary'] = company_summary(result)
         with self.db:
             self.db.execute('INSERT INTO observations(org,checked_at,state,envelope) VALUES(?,?,?,?)',
                 (org, result['refresh']['checked_at'], result['state'], canonical(result)))

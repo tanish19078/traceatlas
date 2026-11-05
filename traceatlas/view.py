@@ -163,6 +163,12 @@ main { padding-block: 43px 76px; }
 .card-metrics span { display: inline-flex; align-items: center; gap: 5px; }
 .card-metrics strong { color: #385b49; font-size: 11px; }
 .fact-list { border-top: 1px solid #e8ede8; }
+.profile-content { border-top: 1px solid #e8ede8; }
+.profile-content > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; color: #315c46; cursor: pointer; font-size: 11px; font-weight: 750; list-style: none; }
+.profile-content > summary::-webkit-details-marker { display: none; }
+.profile-content > summary::after { content: "+"; font-size: 16px; }
+.profile-content[open] > summary::after { content: "−"; }
+.profile-content > summary small { margin-left: auto; color: var(--muted); font-size: 9px; font-weight: 600; }
 .fact-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 14px; padding: 12px 18px; border-bottom: 1px solid #edf1ed; }
 .fact-row:last-child { border-bottom: 0; }
 .fact-copy { min-width: 0; }
@@ -188,6 +194,13 @@ main { padding-block: 43px 76px; }
 .gaps-panel summary, .profile-details summary { padding-block: 11px; color: #64766d; cursor: pointer; font-size: 10px; font-weight: 720; }
 .gap-item { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid #edf1ed; color: #758078; font-size: 10px; }
 .gap-item strong { color: #586960; font-weight: 650; }
+.gap-item div { text-align: right; }
+.gap-item small { display: block; max-width: 260px; margin-top: 2px; color: #87938c; }
+.last-known-panel { margin-top: 10px; border-top: 1px solid #ead9ad; border-bottom: 1px solid #ead9ad; background: #fffbef; }
+.last-known-heading { padding: 11px 18px; color: #6d531f; font-size: 10px; }
+.last-known-heading strong { display: block; font-size: 11px; }
+.last-known-panel .fact-list { border-color: #efe2c1; }
+.last-known-panel .fact-row { border-color: #f1e7cc; }
 .profile-details pre { max-height: 210px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #61736a; font-size: 10px; }
 .research-status { padding: 0 18px 14px; color: var(--muted); font-size: 10px; }
 .research-status p { margin: 4px 0; }
@@ -452,13 +465,34 @@ def _safe_source(url, evidence):
         return False
     if url.startswith(BASE):
         return True
-    if evidence.get('source_class') in {
+    source_class = evidence.get('source_class')
+    if source_class in {
         'verified_company_website', 'legal_news_report', 'legal_filing_report'
     }:
         from .web import normalize_url
 
         try:
             return normalize_url(url) == url
+        except ValueError:
+            return False
+    if source_class in {
+        'official_accounts', 'official_registry_roles', 'official_registry_locations'
+    }:
+        try:
+            parsed = urlsplit(url)
+            return (parsed.scheme == 'https' and parsed.hostname == 'data.brreg.no'
+                    and parsed.username is None and parsed.password is None
+                    and parsed.port in (None, 443))
+        except ValueError:
+            return False
+    if source_class == 'verified_social_page':
+        from .web import SOCIAL_HOSTS, normalize_url
+
+        try:
+            normalized = normalize_url(url)
+            host = urlsplit(normalized).hostname
+            root_host = host[4:] if host.startswith('www.') else host
+            return normalized == url and root_host in SOCIAL_HOSTS
         except ValueError:
             return False
     return False
@@ -470,8 +504,10 @@ def _locator(claim):
         return f"JSON-LD block {claim['json_ld_block']} · Pointer: {pointer}"
     if claim.get('extraction_method') == 'company_meta_description_v1':
         return 'HTML meta description'
-    if 'json_pointer' in claim:
+    if claim.get('json_pointer') is not None:
         return 'JSON pointer: ' + str(claim['json_pointer'])
+    if 'json_pointer' in claim:
+        return 'Structured source record'
     return 'Text span: ' + str(claim.get('text_span', 'missing'))
 
 
@@ -499,6 +535,14 @@ def _comparison_payload(result, evidence_by_id):
 
 def _fact_value(claim):
     value = claim['value']
+    if claim['field'] == 'financials' and isinstance(value, dict) and value.get('metric'):
+        label = html.escape(str(value['metric']).replace('_', ' ').title())
+        amount = value.get('amount')
+        shown = format(amount, ',.0f') if isinstance(amount, (int, float)) else str(amount)
+        currency = html.escape(str(value.get('currency') or 'currency unreported'))
+        period = html.escape(str(value.get('period_end') or 'period unreported'))
+        scope = 'consolidated accounts' if value.get('report_type') == 'KONSERN' else 'company accounts'
+        return f'<strong>{label}</strong><p>{html.escape(shown)} {currency} · {period} · {scope}</p>'
     if claim['field'] == 'jobs' and isinstance(value, dict):
         title = html.escape(value.get('title', 'Job posting'))
         posted = html.escape(value.get('datePosted', 'unknown'))
@@ -539,6 +583,14 @@ def _source_label(url, evidence):
         return 'Brønnøysundregistrene'
     if evidence.get('source_class') == 'verified_company_website':
         return urlsplit(url).hostname or 'Verified company site'
+    if evidence.get('source_class') == 'official_accounts':
+        return 'Brønnøysund annual accounts'
+    if evidence.get('source_class') == 'official_registry_roles':
+        return 'Brønnøysund registered roles'
+    if evidence.get('source_class') == 'official_registry_locations':
+        return 'Brønnøysund operating locations'
+    if evidence.get('source_class') == 'verified_social_page':
+        return urlsplit(url).hostname or 'Verified social profile'
     if evidence.get('source_class') == 'legal_news_report':
         return 'Attributed news report'
     if evidence.get('source_class') == 'legal_filing_report':
@@ -584,7 +636,10 @@ def _fact_row(claim, evidence):
 
 def _company_card(result):
     esc = lambda value: html.escape(str(value), quote=True)
-    evidence_by_id = {item['id']: item for item in result['evidence']}
+    last_known = result.get('last_known', {})
+    all_evidence = result['evidence'] + last_known.get('evidence', [])
+    evidence_by_id = {item['id']: item for item in all_evidence}
+    identity = result['legal_identity'] or last_known.get('legal_identity', {})
     fact_rows = ''.join(
         _fact_row(claim, evidence_by_id[claim['evidence_id']])
         for claim in result['claims']
@@ -593,16 +648,17 @@ def _company_card(result):
     website_pages = result.get('website_research', {}).get('pages_verified', 0)
     search_value = ' '.join(
         [result['organisation_number'], result['state'],
-         result['legal_identity'].get('name', ''), result['summary']]
+         identity.get('name', ''), result['summary']]
         + [canonical(claim['value']) for claim in result['claims']]
+        + [canonical(claim['value']) for claim in last_known.get('claims', [])]
     ).casefold()
     comparison = json.dumps(
         _comparison_payload(result, evidence_by_id), ensure_ascii=False, separators=(',', ':')
     )
-    synthetic = any(item.get('synthetic') for item in result['evidence'])
+    synthetic = any(item.get('synthetic') for item in all_evidence)
     badge = '<span class="sample-badge">Sample</span>' if synthetic else ''
     initials = ''.join(
-        part[0] for part in result['legal_identity'].get('name', 'Co').split()[:2]
+        part[0] for part in identity.get('name', 'Co').split()[:2]
         if part and part[0].isalnum()
     ).upper() or 'Co'
     state = html.escape(result['state'].replace('_', ' '))
@@ -610,14 +666,30 @@ def _company_card(result):
     availability = result['availability']
     gaps = [
         '<div class="gap-item"><span>' + esc(field.replace('_', ' '))
-        + '</span><strong>' + esc(status['state'].replace('_', ' ')) + '</strong></div>'
+        + '</span><div><strong>' + esc(status['state'].replace('_', ' ')) + '</strong>'
+        + ('<small>' + esc(status['reason'].replace('_', ' ')) + '</small>'
+           if status.get('reason') else '') + '</div></div>'
         for field, status in availability.items() if status['state'] != 'available'
     ]
     gaps_panel = ''
     if gaps:
         gaps_panel = (
-            '<details class="gaps-panel"><summary>Information not found ('
+            '<details class="gaps-panel"><summary>Research gaps ('
             + str(len(gaps)) + ')</summary>' + ''.join(gaps) + '</details>'
+        )
+
+    stale_claims = last_known.get('claims', [])
+    stale_panel = ''
+    if stale_claims:
+        stale_rows = ''.join(
+            _fact_row(claim, evidence_by_id[claim['evidence_id']]) for claim in stale_claims
+        )
+        stale_panel = (
+            '<section class="last-known-panel"><div class="last-known-heading">'
+            '<strong>Last verified facts</strong>Verified as of '
+            + esc(last_known.get('as_of', 'unknown'))
+            + '; retained as historical, not current.</div><div class="fact-list">'
+            + stale_rows + '</div></section>'
         )
 
     changes = result['refresh']['changes']
@@ -670,7 +742,14 @@ def _company_card(result):
     )
 
     summary = html.escape(result['summary'])
-    company_name = html.escape(result['legal_identity'].get('name', 'Unresolved company'))
+    company_name = html.escape(identity.get('name', 'Unresolved company'))
+    profile_count = len(result['claims']) + len(stale_claims)
+    profile_content = (
+        '<details class="profile-content"><summary><span>Open company profile</span><small>'
+        + str(profile_count) + ' facts and history</small></summary><div class="fact-list">'
+        + fact_rows + '</div>' + stale_panel + gaps_panel + history + status_section
+        + '</details>'
+    )
     return (
         '<article class="company-card" data-search="' + esc(search_value)
         + '" data-comparison="' + esc(comparison) + '">'
@@ -687,8 +766,7 @@ def _company_card(result):
         + '</strong> supported facts</span><span><strong>' + str(evidence_count)
         + '</strong> evidence records</span><span><strong>' + str(website_pages)
         + '</strong> verified pages</span></div></div>'
-        '<div class="fact-list">' + fact_rows + '</div>' + gaps_panel
-        + history + status_section + '</article>'
+        + profile_content + '</article>'
     )
 
 

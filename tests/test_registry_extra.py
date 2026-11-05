@@ -43,6 +43,20 @@ class RegistryDetailTests(unittest.TestCase):
         self.assertIn('up 20.0% year over year', summary)
         self.assertIn('Company website: We design and build energy efficient commercial properties in Oslo.', summary)
 
+    def test_summary_distinguishes_unknown_and_incomplete_research(self):
+        result = {'legal_identity': {'name': 'Example AS'}, 'claims': [], 'availability': {
+            'news': {'state': 'not_available', 'reason': 'not_researched_in_registry_baseline'},
+            'financials': {'state': 'not_available', 'reason': 'no_reported_financial_records'},
+            'jobs': {'state': 'blocked', 'reason': 'robots_disallowed'},
+        }, 'refresh': {'changes': [
+            {'field': 'registered_employees', 'kind': 'changed'},
+        ]}}
+        summary = company_summary(result)
+        self.assertIn('Not checked in this run: news', summary)
+        self.assertIn('Checked but not reported: financials', summary)
+        self.assertIn('Research incomplete: jobs (blocked)', summary)
+        self.assertIn('Latest refresh changes: registered employees changed', summary)
+
     def test_site_can_match_exact_legal_name_without_a_registry_number(self):
         document = Document(b'<html><h1>Example AS</h1><p>Local services in Oslo.</p></html>')
         self.assertIsNotNone(verify_site_owner(document, ORG, 'Example AS'))

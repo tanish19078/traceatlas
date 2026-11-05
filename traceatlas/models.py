@@ -136,6 +136,40 @@ def company_summary(result):
         if isinstance(latest_metrics.get('total_equity'), (int, float)):
             parts.append('Total equity was ' + format(latest_metrics['total_equity'], ',.0f')
                          + ' ' + currency + ' at period end')
+
+    availability = result.get('availability', {})
+    unchecked, unavailable, incomplete = [], [], []
+    for field, status in availability.items():
+        if status.get('state') == 'available':
+            continue
+        label = field.replace('_', ' ')
+        reason = status.get('reason', '')
+        if reason.startswith('not_researched'):
+            unchecked.append(label)
+        elif status.get('state') == 'not_available':
+            unavailable.append(label)
+        else:
+            incomplete.append(label + ' (' + status.get('state', 'unknown').replace('_', ' ') + ')')
+
+    def short_list(values):
+        shown = values[:4]
+        return ', '.join(shown) + (' and ' + str(len(values) - 4) + ' more' if len(values) > 4 else '')
+
+    if unchecked:
+        parts.append('Not checked in this run: ' + short_list(unchecked))
+    if unavailable:
+        parts.append('Checked but not reported: ' + short_list(unavailable))
+    if incomplete:
+        parts.append('Research incomplete: ' + short_list(incomplete))
+
+    changes = result.get('refresh', {}).get('changes', [])
+    if changes:
+        labels = []
+        for change in changes[:4]:
+            labels.append(change['field'].replace('_', ' ') + ' ' + change['kind'].replace('_', ' '))
+        if len(changes) > 4:
+            labels.append(str(len(changes) - 4) + ' more')
+        parts.append('Latest refresh changes: ' + ', '.join(labels))
     return '. '.join(parts) + '.'
 
 
