@@ -24,7 +24,8 @@ def fetch(number, timeout=12):
     from .network import take_request, rate_limited
     take_request(url)
     try:
-        response = urllib.request.build_opener().open(request, timeout=timeout)
+        from .registry import NoRedirect
+        response = urllib.request.build_opener(NoRedirect).open(request, timeout=timeout)
     except urllib.error.HTTPError as exc:
         if exc.code == 429:
             rate_limited(url, exc.headers.get('Retry-After') if exc.headers else None)

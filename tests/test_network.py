@@ -3,8 +3,9 @@ import concurrent.futures
 import tempfile
 import time
 import unittest
+import urllib.error
 from unittest.mock import patch
-from traceatlas import network, core, registry
+from traceatlas import accounts, network, core, registry, registry_extra
 from tests.test_traceatlas import ORG, fixture
 
 class RequestTests(unittest.TestCase):
@@ -59,3 +60,17 @@ class RequestTests(unittest.TestCase):
             with self.assertRaisesRegex(AccessError,'source_blocked'):session.page('https://example.com/')
             with self.assertRaisesRegex(network.BudgetError,'rate_limited'):SiteSession('https://example.com/',budget.deadline,transport=transport)
         self.assertEqual(transport.call_count,2);self.assertEqual(budget.used,2)
+
+    def test_official_auxiliary_clients_never_follow_redirects(self):
+        url=accounts.BASE+ORG
+        for fetch,args in [
+            (accounts.fetch,(ORG,1)),
+            (registry_extra.fetch,(registry_extra.BASE+'enheter/'+ORG+'/roller',1)),
+        ]:
+            with self.subTest(fetch=fetch.__module__), \
+                    patch('urllib.request.build_opener') as build:
+                build.return_value.open.side_effect=urllib.error.HTTPError(
+                    url,302,'redirect',{'Location':'https://other.example/'},None)
+                with self.assertRaises(urllib.error.HTTPError):
+                    fetch(*args)
+                self.assertIs(build.call_args.args[0],registry.NoRedirect)
