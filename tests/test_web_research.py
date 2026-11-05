@@ -166,6 +166,15 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(row['candidates'][0]['status'], 'verified')
         self.assertEqual(row['availability']['social_pages']['state'], 'available')
 
+    def test_social_identity_rejects_conflicting_company_numbers(self):
+        exact_heading=b'<h1>SYNTHETIC TEST COMPANY</h1>'
+        self.assertIsNotNone(w.verify_social_identity(w.Document(exact_heading),ORG,'SYNTHETIC TEST COMPANY'))
+        for page in [
+            PAGE+b' Other Company Org nr 974760673',
+            exact_heading+b' Other Company Org nr 974760673',
+        ]:
+            self.assertIsNone(w.verify_social_identity(w.Document(page),ORG,'SYNTHETIC TEST COMPANY'))
+
     def test_unverified_child_does_not_inherit_root_identity(self):
         class Child(FakeSession):
             def page(self,url):

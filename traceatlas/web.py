@@ -297,9 +297,12 @@ def extract_website_description(document, number, legal_name, source_url, eviden
 def verify_social_identity(document, number, legal_name):
     """Accept a public social profile only with an exact legal-name or org-number match."""
     text = document.text
-    number_match = ORG_PATTERN.search(text)
-    if number_match and re.sub(r'\D', '', number_match.group(1)) == number:
-        return (number_match.start(), number_match.end())
+    number_matches = list(ORG_PATTERN.finditer(text))
+    numbers = {re.sub(r'\D', '', match.group(1)) for match in number_matches}
+    if numbers:
+        if numbers != {number}:
+            return None
+        return (number_matches[0].start(), number_matches[0].end())
     expected = normalize_name(legal_name)
     for heading in document.headings:
         if normalize_name(heading) == expected:
