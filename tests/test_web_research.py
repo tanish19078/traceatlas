@@ -267,6 +267,7 @@ class WebsiteIntegrationTests(unittest.TestCase):
                 second = store.save(result(),fixture(hjemmeside=HOST))
                 self.assertEqual(len(second['last_known']['claims']),2)
                 self.assertFalse(any('text_span' in c for c in second['claims']))
+                self.assertEqual(second['refresh']['changes'],[])
                 third = store.save(result(),fixture(hjemmeside=HOST))
                 self.assertEqual(third['last_known']['claims'],second['last_known']['claims'])
             finally:

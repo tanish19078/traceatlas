@@ -143,6 +143,13 @@ def validate_result(result, root, historical=False):
                 require(claim['id'] == digest((result['organisation_number'] + claim['field'] + item['source_url'] + value).encode()), 'wrong website claim id')
         require(type(value) is type(claim['value']) and value == claim['value'], 'unsupported claim value')
         checked += 1
+    if not historical and result.get('evidence_history'):
+        historical_claims = [change['before'] for change in result['refresh']['changes']
+                             if change.get('before') is not None]
+        archived = {'organisation_number': result['organisation_number'], 'state': 'available',
+                    'legal_identity': result['legal_identity'], 'claims': historical_claims,
+                    'evidence': result['evidence_history']}
+        checked += validate_result(archived, root, historical=True)
     if not historical and 'last_known' in result:
         previous = result['last_known']
         require(isinstance(previous, dict), 'invalid historical evidence')

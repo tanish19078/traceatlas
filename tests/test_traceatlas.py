@@ -114,6 +114,10 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(change['after']['value'], 8)
         for side in ['before','after']:
             self.assertTrue((self.root/'snapshots'/(change[side]['evidence_id']+'.json')).exists())
+        self.assertEqual(
+            {item['id'] for item in result['evidence_history']},
+            {change['before']['evidence_id']},
+        )
 
     def test_failed_refresh_preserves_last_success(self):
         self.save_fixture()

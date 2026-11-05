@@ -51,6 +51,18 @@ class AuditHardeningTests(unittest.TestCase):
             path.write_text(json.dumps(row)+'\n')
             self.assertFalse(verify(folder)['passed'])
 
+    def test_refresh_before_claim_corruption_is_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(registry,'fetch',return_value=fixture()):
+                core.run_batch([ORG],folder)
+            with patch.object(registry,'fetch',return_value=fixture(antallAnsatte=8)):
+                core.run_batch([ORG],folder)
+            path=Path(folder)/'profiles.jsonl';row=json.loads(path.read_text())
+            change=next(item for item in row['refresh']['changes'] if item['field']=='registered_employees')
+            change['before']['value']=999
+            path.write_text(json.dumps(row)+'\n')
+            self.assertFalse(verify(folder)['passed'])
+
     def test_non_utf8_export_returns_a_failed_audit(self):
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder)/'profiles.jsonl').write_bytes(b'\xff')

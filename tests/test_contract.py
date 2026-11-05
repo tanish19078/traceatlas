@@ -35,3 +35,28 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(row['operations']['requests'],0)
             self.assertIn('reused_evidence_as_of',row['run'])
             self.assertEqual(report['requests'],0)
+
+    def test_refresh_changes_include_resolvable_prior_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(registry,'fetch',return_value=fixture()):
+                core.run_batch([ORG],folder)
+            with patch.object(registry,'fetch',return_value=fixture(antallAnsatte=8)):
+                core.run_batch([ORG],folder)
+            row=json.loads((Path(folder)/'envelopes.jsonl').read_text())
+            refs={item['id'] for item in row['evidence']}
+            change=next(item for item in row['changes'] if item['field']=='registered_employees')
+            self.assertIn(change['before']['evidence_id'],refs)
+            self.assertIn(change['after']['evidence_id'],refs)
+            self.assertTrue(validate([row],[ORG])['passed'])
+            self.assertTrue(verify(folder)['passed'])
+
+    def test_failed_refresh_exports_last_known_evidence(self):
+        with tempfile.TemporaryDirectory() as folder,patch.object(registry,'fetch',return_value=fixture()):
+            core.run_batch([ORG],folder)
+            core.run_batch([ORG],folder,budget=-1)
+            row=json.loads((Path(folder)/'envelopes.jsonl').read_text())
+            refs={item['id'] for item in row['evidence']}
+            self.assertTrue(row['last_known']['claims'])
+            self.assertLessEqual(set(row['last_known']['evidence_ids']),refs)
+            self.assertTrue(all(item['evidence_id'] in refs for item in row['last_known']['claims']))
+            self.assertTrue(validate([row],[ORG])['passed'])

@@ -8,7 +8,17 @@ from .models import STATES, canonical, atomic_write
 
 
 def adapt(result, root, run_id, started_at, completed_at, resumed=False):
-    evidence = copy.deepcopy(result['evidence'])
+    source_evidence = (
+        result['evidence'] + result.get('evidence_history', [])
+        + result.get('last_known', {}).get('evidence', [])
+    )
+    evidence_by_id = {}
+    for item in source_evidence:
+        existing = evidence_by_id.get(item['id'])
+        if existing is not None and existing != item:
+            raise ValueError('conflicting evidence metadata')
+        evidence_by_id[item['id']] = item
+    evidence = copy.deepcopy(list(evidence_by_id.values()))
     for item in evidence:
         original_class = item['source_class']
         item['native_source_class'] = original_class
@@ -42,12 +52,17 @@ def adapt(result, root, run_id, started_at, completed_at, resumed=False):
            'terminal_status': 'failed' if result['state'] == 'failed' else 'completed'}
     if resumed:
         run['reused_evidence_as_of'] = result['refresh']['checked_at']
-    return {'organisation_number': result['organisation_number'], 'run': run,
-            'state': result['state'], 'legal_identity': result['legal_identity'],
-            'claims': claims, 'evidence': evidence, 'changes': result['refresh']['changes'],
-            'errors': result['errors'], 'operations': operations,
-            'availability': result['availability'], 'summary': result['summary'],
-            'source_mode': result['source_mode'], 'refresh': result['refresh']}
+    row = {'organisation_number': result['organisation_number'], 'run': run,
+           'state': result['state'], 'legal_identity': result['legal_identity'],
+           'claims': claims, 'evidence': evidence, 'changes': result['refresh']['changes'],
+           'errors': result['errors'], 'operations': operations,
+           'availability': result['availability'], 'summary': result['summary'],
+           'source_mode': result['source_mode'], 'refresh': result['refresh']}
+    if 'last_known' in result:
+        previous = copy.deepcopy(result['last_known'])
+        previous['evidence_ids'] = sorted(item['id'] for item in previous.pop('evidence'))
+        row['last_known'] = previous
+    return row
 
 
 def require(condition, message):
@@ -81,6 +96,19 @@ def validate(rows, numbers):
                 value = row['operations'][key]
                 require(type(value) in (int, float) and math.isfinite(value) and value >= 0, 'invalid operations metric')
             require(isinstance(row['changes'], list) and isinstance(row['errors'], list), 'invalid result containers')
+            for change in row['changes']:
+                require(change['kind'] in ('added', 'changed', 'no_longer_reported'), 'invalid change kind')
+                for side in ('before', 'after'):
+                    claim = change[side]
+                    require(claim is None or claim['evidence_id'] in refs, 'change has dangling evidence reference')
+            if 'last_known' in row:
+                previous = row['last_known']
+                require(isinstance(previous['claims'], list)
+                        and isinstance(previous['evidence_ids'], list)
+                        and set(previous['evidence_ids']) <= refs,
+                        'invalid last-known evidence')
+                require(all(claim['evidence_id'] in refs for claim in previous['claims']),
+                        'last-known claim has dangling evidence reference')
         except (AssertionError, KeyError, TypeError, ValueError, IndexError) as exc:
             errors.append({'row': index, 'error': str(exc)})
     return {'passed': not errors, 'results_checked': len(rows), 'errors': errors}

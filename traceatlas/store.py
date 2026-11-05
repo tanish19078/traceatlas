@@ -31,16 +31,36 @@ class Store:
                 raise ValueError('stored_snapshot_integrity_failure')
         changes = []
         if prior and result['state'] == 'available':
+            prior_evidence = {
+                item['id']: item for item in (
+                    prior['evidence'] + prior.get('evidence_history', [])
+                    + prior.get('last_known', {}).get('evidence', [])
+                )
+            }
+            checked_sources = {
+                (item.get('source_class'), item.get('source_url'))
+                for item in result['evidence']
+            }
             old = {c.get('subject', c['field']): c for c in prior['claims']}
             new = {c.get('subject', c['field']): c for c in result['claims']}
             for subject in sorted(old.keys() | new.keys()):
                 before, after = old.get(subject), new.get(subject)
                 if before and after and before['value'] == after['value']:
                     continue
+                if before and after is None:
+                    source = prior_evidence.get(before['evidence_id'])
+                    if source is None or (
+                        source.get('source_class'), source.get('source_url')
+                    ) not in checked_sources:
+                        continue
                 changes.append({'field': (after or before)['field'], 'subject': subject,
                                 'kind': 'added' if before is None else
                                 'no_longer_reported' if after is None else 'changed',
                                 'before': before, 'after': after})
+            before_ids = {change['before']['evidence_id'] for change in changes
+                          if change['before'] is not None}
+            if before_ids:
+                result['evidence_history'] = [prior_evidence[key] for key in sorted(before_ids)]
         result['refresh']['changes'] = changes
         if prior:
             result['refresh']['previous_success_at'] = prior['refresh']['checked_at']
@@ -53,7 +73,9 @@ class Store:
                      if c['field'] in ('website_identity', 'company_page', 'company_description', 'social_pages', 'leadership', 'locations', 'financials', 'jobs', 'legal_cases', 'news')
                      and c.get('subject', c['field']) not in current}
             if stale:
-                evidence = {e['id']: e for e in prior['evidence'] + prior.get('last_known', {}).get('evidence', [])}
+                evidence = {e['id']: e for e in prior['evidence']
+                            + prior.get('evidence_history', [])
+                            + prior.get('last_known', {}).get('evidence', [])}
                 result['last_known'] = {'as_of': prior['refresh']['checked_at'], 'legal_identity': prior['legal_identity'],
                     'claims': list(stale.values()),
                     'evidence': [evidence[key] for key in sorted({c['evidence_id'] for c in stale.values()})]}
