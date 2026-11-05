@@ -54,7 +54,10 @@ class RegistryDetailTests(unittest.TestCase):
     def test_website_guesses_use_registered_name_and_town(self):
         result = {'legal_identity': {'name': 'Example AS'}, 'claims': [
             {'field': 'registered_address', 'value': {'poststed': 'Oslo'}}]}
-        self.assertEqual(_website_guesses(result), ['www.example.no', 'example-oslo.no'])
+        self.assertEqual(
+            _website_guesses(result),
+            ['www.example.no', 'example.no', 'example-oslo.no'],
+        )
 
 
 if __name__ == '__main__':

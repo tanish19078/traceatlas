@@ -83,7 +83,7 @@ python -m traceatlas --input companies.txt --output runs/web --allow-domain comp
 ```
 
 For live batches where the registry has no website, the no-key option probes
-two `.no` domains derived from the registered name and town:
+up to three `.no` domains derived from the registered name and town:
 
 ```bash
 python -m traceatlas --input companies.txt --output runs/discovery --discover-websites --timeout 20
@@ -242,8 +242,9 @@ and stored support, not the completeness of information found online.
 
 ## Current limits
 
-General search-engine discovery, broad leadership extraction, and PDF parsing
-are not implemented. Website discovery uses limited name/town domain guesses.
+Broad default search-engine discovery, broad leadership extraction, and PDF
+parsing are not implemented. Credential-free website discovery uses limited
+name/town domain guesses; opt-in Brave candidate search is also available.
 Registered roles and operating sub-entities come from the public
 registry. Revenue trends use the official annual-accounts API where comparable
 periods are available. Legal research uses supplied reviewed URLs. Website and

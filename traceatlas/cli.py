@@ -21,7 +21,7 @@ def main(argv=None):
     parser.add_argument('--max-requests', type=int, help='Lower the shared request cap (at most 20 per input company)')
     parser.add_argument('--timeout', type=float, default=12)
     parser.add_argument('--allow-domain', action='append', default=[], help='Reviewed public website hostname; enables opt-in website research (repeatable)')
-    parser.add_argument('--discover-websites', action='store_true', help='Probe up to two name/town-derived .no domains when no registry website is listed; obey robots.txt and publish only exact company matches')
+    parser.add_argument('--discover-websites', action='store_true', help='Probe up to three name/town-derived .no domains when no registry website is listed; obey robots.txt and publish only exact company matches')
     parser.add_argument('--search-websites', action='store_true', help='Use Brave Search API to discover website and social candidates; requires BRAVE_SEARCH_API_KEY and makes up to two billed queries per company')
     parser.add_argument('--legal-sources', help='Reviewed JSON map of company numbers to news/filing URLs; also requires --allow-domain')
     parser.add_argument('--resume', action='store_true', help='Reuse evidence-checked terminal results from the same batch; retry failed/blocked inputs')

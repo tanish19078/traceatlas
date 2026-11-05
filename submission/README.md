@@ -17,9 +17,9 @@ input, and the starter kit's `OUTPUT_CONTRACT.md`.
 
 Python 3.11–3.13; no package install, model key, or paid service is required for
 the standard run. It uses the live public registry and deterministic company
-website discovery. The optional Brave integration requires an approved
-`BRAVE_SEARCH_API_KEY` and makes one billed query with at most one
-social-focused follow-up per company.
+website discovery across up to three name/town-derived domains. The optional
+Brave integration requires an approved `BRAVE_SEARCH_API_KEY` and makes one
+billed query with at most one social-focused follow-up per company.
 
 ```bash
 python -m traceatlas --input /path/to/companies.jsonl --output runs/evaluation --workers 8 --budget-seconds 2700 --discover-websites --supervised --run-id official-run

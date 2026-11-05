@@ -394,8 +394,10 @@ def _website_guesses(result):
         return ''.join(c for c in normalized if c.isascii() and c.isalnum())
     name = slug(' '.join(words))
     place = slug(town) if town else ''
-    hosts = ['www.' + name + '.no', name + '-' + place + '.no' if place else name + '.no']
-    return list(dict.fromkeys(host for host in hosts if 3 <= len(host) <= 253))[:2]
+    hosts = ['www.' + name + '.no', name + '.no']
+    if place:
+        hosts.append(name + '-' + place + '.no')
+    return list(dict.fromkeys(host for host in hosts if 3 <= len(host) <= 253))[:3]
 
 
 def _enrich_social(result, links, base_url, allowed_domains, deadline, session_factory, discover, evidence_ids):
@@ -491,7 +493,7 @@ def enrich(result, allowed_domains, deadline, session_factory=SiteSession, disco
         if not candidates and not social_candidates:
             return blobs
         verified = None
-        for candidate in candidates[:2]:
+        for candidate in candidates[:3]:
             candidate_session = None
             try:
                 candidate_url = normalize_url(candidate['value'])
