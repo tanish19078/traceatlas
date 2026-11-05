@@ -302,13 +302,13 @@ def verify_social_identity(document, number, legal_name):
     if numbers:
         if numbers != {number}:
             return None
-        return (number_matches[0].start(), number_matches[0].end())
+        return [number_matches[0].start(), number_matches[0].end()]
     expected = normalize_name(legal_name)
     for heading in document.headings:
         if normalize_name(heading) == expected:
             position = text.find(heading)
             if position >= 0:
-                return (position, position + len(heading))
+                return [position, position + len(heading)]
     return None
 
 

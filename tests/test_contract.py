@@ -74,3 +74,28 @@ class ContractTests(unittest.TestCase):
             self.assertLessEqual(set(row['last_known']['evidence_ids']),refs)
             self.assertTrue(all(item['evidence_id'] in refs for item in row['last_known']['claims']))
             self.assertTrue(validate([row],[ORG])['passed'])
+
+    def test_repeated_snapshot_merges_retrieval_observations(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store=core.Store(folder)
+            try:
+                body=fixture()
+                with patch.object(registry,'fetch',return_value=body):
+                    first,_=core.research(ORG)
+                    second,_=core.research(ORG)
+                first['evidence'][0]['retrieved_at']='2026-11-01T00:00:00+00:00'
+                store.save(first,body)
+                second['evidence'][0]['retrieved_at']='2026-11-02T00:00:00+00:00'
+                second['claims']=[claim for claim in second['claims']
+                                  if claim['field']!='registered_employees']
+                second['availability']['registered_employees']={
+                    'state':'not_available','reason':'registry_does_not_confirm_employee_count'}
+                saved=store.save(second,body);saved['source_mode']='live'
+                from traceatlas.contract import adapt
+                row=adapt(saved,folder,'repeat','2026-11-02T00:00:00+00:00',
+                          '2026-11-02T00:00:01+00:00')
+                self.assertEqual(len(row['evidence']),1)
+                self.assertEqual(row['evidence'][0]['retrieval_times'],[
+                    '2026-11-01T00:00:00+00:00','2026-11-02T00:00:00+00:00'])
+            finally:
+                store.close()

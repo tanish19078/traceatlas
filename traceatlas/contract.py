@@ -46,9 +46,21 @@ def adapt(result, root, run_id, started_at, completed_at, resumed=False):
     evidence_by_id = {}
     for item in source_evidence:
         existing = evidence_by_id.get(item['id'])
-        if existing is not None and existing != item:
-            raise ValueError('conflicting evidence metadata')
-        evidence_by_id[item['id']] = item
+        if existing is None:
+            evidence_by_id[item['id']] = copy.deepcopy(item)
+            continue
+        identity_keys = (
+            'content_sha256', 'snapshot_path', 'source_url', 'source_class',
+            'organisation_number', 'synthetic',
+        )
+        if any(existing.get(key) != item.get(key) for key in identity_keys):
+            raise ValueError('conflicting evidence identity')
+        observations = set(existing.get('retrieval_times', [existing['retrieved_at']]))
+        observations.update(item.get('retrieval_times', [item['retrieved_at']]))
+        observations = sorted(observations)
+        existing['retrieved_at'] = observations[0]
+        existing['last_retrieved_at'] = observations[-1]
+        existing['retrieval_times'] = observations
     native_evidence = list(evidence_by_id.values())
     bodies = {
         item['id']: (Path(root) / item['snapshot_path']).read_bytes()

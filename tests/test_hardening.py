@@ -63,6 +63,23 @@ class AuditHardeningTests(unittest.TestCase):
             path.write_text(json.dumps(row)+'\n')
             self.assertFalse(verify(folder)['passed'])
 
+    def test_refresh_after_claim_corruption_and_missing_history_are_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(registry,'fetch',return_value=fixture()):
+                core.run_batch([ORG],folder)
+            with patch.object(registry,'fetch',return_value=fixture(antallAnsatte=8)):
+                core.run_batch([ORG],folder)
+            path=Path(folder)/'profiles.jsonl';original=json.loads(path.read_text())
+            changed=json.loads(json.dumps(original))
+            change=next(item for item in changed['refresh']['changes']
+                        if item['field']=='registered_employees')
+            change['after']['value']=999
+            path.write_text(json.dumps(changed)+'\n')
+            self.assertFalse(verify(folder)['passed'])
+            missing=json.loads(json.dumps(original));missing.pop('evidence_history')
+            path.write_text(json.dumps(missing)+'\n')
+            self.assertFalse(verify(folder)['passed'])
+
     def test_non_utf8_export_returns_a_failed_audit(self):
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder)/'profiles.jsonl').write_bytes(b'\xff')

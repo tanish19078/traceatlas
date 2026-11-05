@@ -145,13 +145,36 @@ def validate_result(result, root, historical=False):
                 require(claim['id'] == digest((result['organisation_number'] + claim['field'] + item['source_url'] + value).encode()), 'wrong website claim id')
         require(type(value) is type(claim['value']) and value == claim['value'], 'unsupported claim value')
         checked += 1
-    if not historical and result.get('evidence_history'):
-        historical_claims = [change['before'] for change in result['refresh']['changes']
-                             if change.get('before') is not None]
-        archived = {'organisation_number': result['organisation_number'], 'state': 'available',
-                    'legal_identity': result['legal_identity'], 'claims': historical_claims,
-                    'evidence': result['evidence_history']}
-        checked += validate_result(archived, root, historical=True)
+    if not historical:
+        changes = result.get('refresh', {}).get('changes', [])
+        require(isinstance(changes, list), 'invalid refresh changes')
+        current = {claim.get('subject', claim['field']): claim for claim in result['claims']}
+        historical_claims = []
+        for change in changes:
+            require(isinstance(change, dict), 'invalid refresh change')
+            before, after = change.get('before'), change.get('after')
+            kind = change.get('kind')
+            require(kind in ('added', 'changed', 'no_longer_reported'), 'invalid refresh change kind')
+            require((kind == 'added' and before is None and after is not None)
+                    or (kind == 'changed' and before is not None and after is not None)
+                    or (kind == 'no_longer_reported' and before is not None and after is None),
+                    'refresh change sides do not match kind')
+            claim = after or before
+            subject = claim.get('subject', claim['field'])
+            require(change.get('subject') == subject and change.get('field') == claim['field'],
+                    'refresh change identity mismatch')
+            if after is not None:
+                require(current.get(subject) == after, 'refresh after claim is not current')
+            if before is not None:
+                historical_claims.append(before)
+        history = result.get('evidence_history', [])
+        require(isinstance(history, list), 'invalid refresh evidence history')
+        require(bool(history) == bool(historical_claims), 'refresh history evidence missing or unexpected')
+        if historical_claims:
+            archived = {'organisation_number': result['organisation_number'], 'state': 'available',
+                        'legal_identity': result['legal_identity'], 'claims': historical_claims,
+                        'evidence': history}
+            checked += validate_result(archived, root, historical=True)
     if not historical and 'last_known' in result:
         previous = result['last_known']
         require(isinstance(previous, dict), 'invalid historical evidence')

@@ -138,6 +138,34 @@ class SearchTests(unittest.TestCase):
             self.assertIn('listed rate', report['external_api_cost_basis'])
             self.assertTrue(verify(folder)['passed'])
 
+    def test_social_evidence_round_trips_through_json_audit(self):
+        from traceatlas.audit import verify
+        unique_social = b'<h1>SYNTHETIC TEST COMPANY</h1><p>Official social profile.</p>'
+        class SocialSession(FakeSession):
+            def page(self,url):
+                self.requests+=1
+                return unique_social if 'facebook.com' in url else super().page(url)
+        def search_result(row,*_args):
+            row['search_research']={'provider':'brave','queries':1,'successful_queries':1,
+                                    'candidates':1,'errors':[]}
+            row['candidates'].append({'kind':'social_page',
+                'value':'https://www.facebook.com/example','status':'discovered',
+                'discovery_source':'web_search'})
+            return row['candidates']
+        real_enrich=web.enrich
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.dict(os.environ,{'BRAVE_SEARCH_API_KEY':'test-key'}), \
+                patch.object(registry,'fetch',return_value=fixture(hjemmeside='example.com')), \
+                patch('traceatlas.accounts.enrich',return_value=None), \
+                patch('traceatlas.registry_extra.enrich',return_value=[]), \
+                patch('traceatlas.search.discover_candidates',side_effect=search_result), \
+                patch('traceatlas.web.enrich',side_effect=lambda row,domains,deadline,discover=False:
+                      real_enrich(row,domains,deadline,SocialSession,discover)):
+            core.run_batch([ORG],folder,workers=1,search_websites=True)
+            row=json.loads((Path(folder)/'profiles.jsonl').read_text())
+            self.assertTrue(any(claim['field']=='social_pages' for claim in row['claims']))
+            self.assertTrue(verify(folder)['passed'])
+
 
 if __name__ == '__main__':
     unittest.main()
