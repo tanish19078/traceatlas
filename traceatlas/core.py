@@ -1,6 +1,7 @@
 """Batch orchestration and input parsing."""
 from __future__ import annotations
 import concurrent.futures
+import gzip
 import json
 import math
 import os
@@ -13,7 +14,10 @@ from .store import Store
 from .view import render
 def read_inputs(path):
     numbers = []
-    for line in Path(path).read_text().splitlines():
+    body = Path(path).read_bytes()
+    if body.startswith(b'\x1f\x8b'):
+        body = gzip.decompress(body)
+    for line in body.decode('utf-8').splitlines():
         if not line.strip():
             continue
         raw = line.strip()

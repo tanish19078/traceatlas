@@ -10,7 +10,8 @@ per 100 companies, supplied organisation-number inputs, optional frozen registry
 input, and the starter kit's `OUTPUT_CONTRACT.md`.
 
 - [Current challenge](https://builderr.ai/challenges/signalpost)
-- [Starter kit containing OUTPUT_CONTRACT.md](https://builderr.ai/signalpost-starter-kit.tar.gz)
+- [Vendored OUTPUT_CONTRACT.md](../OUTPUT_CONTRACT.md)
+- [Original starter kit](https://builderr.ai/signalpost-starter-kit.tar.gz)
 - [Source policy](https://builderr.ai/starter-briefs/signalpost-sources.md)
 
 ## Run command

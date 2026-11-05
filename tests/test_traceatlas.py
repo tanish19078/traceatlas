@@ -1,4 +1,5 @@
 """Deterministic regression tests. All fixture values are synthetic."""
+import gzip
 import json
 import tempfile
 import unittest
@@ -236,6 +237,9 @@ class BatchTests(unittest.TestCase):
             path = Path(folder)/'input.txt'
             path.write_text(ORG+'\n'+json.dumps({'organisation_number':ORG})+'\n"bad"\n\n')
             self.assertEqual(t.read_inputs(path), [ORG,ORG,'bad'])
+            compressed=Path(folder)/'input.jsonl.gz'
+            compressed.write_bytes(gzip.compress(path.read_bytes()))
+            self.assertEqual(t.read_inputs(compressed),[ORG,ORG,'bad'])
 
 
 if __name__ == '__main__':
