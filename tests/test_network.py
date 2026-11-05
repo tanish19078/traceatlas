@@ -18,6 +18,17 @@ class RequestTests(unittest.TestCase):
         with concurrent.futures.ThreadPoolExecutor(8) as pool:
             self.assertEqual(sum(pool.map(task,range(100))),7)
         self.assertEqual(budget.used,7)
+    def test_one_input_cannot_consume_another_inputs_allowance(self):
+        budget=network.RequestBudget(40,time.monotonic()+10)
+        with network.request_scope(budget,0):
+            for _ in range(20):
+                network.take_request('https://example.com/')
+            with self.assertRaisesRegex(network.BudgetError,'input_request_budget_exhausted'):
+                network.take_request('https://example.com/')
+        with network.request_scope(budget,1):
+            network.take_request('https://example.com/')
+        self.assertEqual(budget.used,21)
+        self.assertEqual(budget.by_input,{0:20,1:1})
     def test_429_honors_retry_after_without_spending_a_request(self):
         network.rate_limited('https://example.com/', '120')
         budget=network.RequestBudget(5,time.monotonic()+1)

@@ -16,8 +16,9 @@ class BudgetError(ValueError):
     pass
 
 class RequestBudget:
-    def __init__(self, limit, deadline):
+    def __init__(self, limit, deadline, per_input_limit=20):
         self.limit, self.deadline = limit, deadline
+        self.per_input_limit = per_input_limit
         self.used, self.by_input = 0, {}
         self.lock = threading.Lock()
 
@@ -25,6 +26,8 @@ class RequestBudget:
         with self.lock:
             if time.monotonic() >= self.deadline:
                 raise BudgetError('deadline_exhausted')
+            if self.by_input.get(index, 0) >= self.per_input_limit:
+                raise BudgetError('input_request_budget_exhausted')
             if self.used >= self.limit:
                 raise BudgetError('global_request_budget_exhausted')
             self.used += 1

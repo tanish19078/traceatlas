@@ -133,7 +133,10 @@ def discover_candidates(result, api_key, timeout=8, transport=None):
         except (OSError, ValueError, TypeError) as exc:
             message = str(exc)
             known = re.fullmatch(r'search_(?:http_\d{3}|rate_limited|response_size_limit|invalid_search_response)', message)
-            budget_error = message in {'deadline_exhausted', 'global_request_budget_exhausted', 'host_rate_limited'}
+            budget_error = message in {
+                'deadline_exhausted', 'global_request_budget_exhausted',
+                'input_request_budget_exhausted', 'host_rate_limited',
+            }
             result['search_research']['errors'].append(message if known or budget_error else type(exc).__name__)
         if not queries and not social_found and result['search_research']['successful_queries'] and not social_query_added:
             social_query_added = True
