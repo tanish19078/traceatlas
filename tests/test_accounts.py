@@ -100,6 +100,10 @@ class AccountTests(unittest.TestCase):
                 patch.object(registry_extra,'enrich',return_value=[]):
             core.run_batch([ORG],folder)
             self.assertTrue(verify(folder)['passed'])
+            contract=json.loads((Path(folder)/'envelopes.jsonl').read_text())
+            evidence=next(item for item in contract['evidence']
+                          if item['native_source_class']=='official_accounts')
+            self.assertIn('150',evidence['claim_span'])
             path=Path(folder)/'profiles.jsonl';row=json.loads(path.read_text())
             claim=next(item for item in row['claims']
                        if item['field']=='financials' and item['value']['metric']=='annual_result')

@@ -27,6 +27,20 @@ class ContractTests(unittest.TestCase):
             row=json.loads((Path(folder)/'envelopes.jsonl').read_text())
             for mutate in [lambda r:r['claims'][0].update(evidence_ids=['missing']),lambda r:r['operations'].update(requests=-1),lambda r:r['run'].update(completed_at='no date')]:
                 bad=copy.deepcopy(row);mutate(bad);self.assertFalse(validate([bad],[ORG])['passed'])
+
+    def test_claim_span_uses_the_claim_locator_not_the_source_prefix(self):
+        source={'padding':'x'*3000,'organisasjonsnummer':ORG,
+                'navn':'SYNTHETIC TEST COMPANY','organisasjonsform':{'kode':'AS'},
+                'harRegistrertAntallAnsatte':True,'antallAnsatte':7,'konkurs':False}
+        body=json.dumps(source).encode()
+        with tempfile.TemporaryDirectory() as folder,patch.object(registry,'fetch',return_value=body):
+            core.run_batch([ORG],folder)
+            row=json.loads((Path(folder)/'envelopes.jsonl').read_text())
+            evidence=next(item for item in row['evidence']
+                          if item['native_source_class']=='official_registry')
+            self.assertIn('SYNTHETIC TEST COMPANY',evidence['claim_span'])
+            self.assertIn('7',evidence['claim_span'])
+            self.assertNotIn('x'*100,evidence['claim_span'])
     def test_resume_does_not_claim_cached_requests_as_new(self):
         with tempfile.TemporaryDirectory() as folder,patch.object(registry,'fetch',return_value=fixture()):
             core.run_batch([ORG],folder)

@@ -7,6 +7,37 @@ from pathlib import Path
 from .models import STATES, canonical, atomic_write
 
 
+def _resolve_pointer(value, pointer):
+    if pointer in (None, ''):
+        return value
+    for token in pointer.lstrip('/').split('/'):
+        token = token.replace('~1', '/').replace('~0', '~')
+        value = value[int(token)] if isinstance(value, list) else value[token]
+    return value
+
+
+def _claim_excerpt(claim, evidence, body):
+    try:
+        if evidence['snapshot_path'].endswith('.json') and isinstance(claim.get('json_pointer'), str):
+            return canonical(_resolve_pointer(json.loads(body), claim['json_pointer']))[:2048]
+        if 'json_ld_block' in claim:
+            from .web import Document
+            block = Document(body).json_ld[claim['json_ld_block']]
+            return canonical(_resolve_pointer(block, claim.get('json_pointer')))[:2048]
+        span = claim.get('text_span')
+        if isinstance(span, list) and len(span) == 2 and all(type(item) is int for item in span):
+            from .web import Document
+            text = Document(body).text
+            if 0 <= span[0] < span[1] <= len(text):
+                return text[span[0]:span[1]][:2048]
+        value = claim.get('value')
+        if isinstance(value, str) and value in body.decode('utf-8', errors='replace'):
+            return value[:2048]
+        return canonical(value)[:2048]
+    except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return canonical(claim.get('value'))[:2048]
+
+
 def adapt(result, root, run_id, started_at, completed_at, resumed=False):
     source_evidence = (
         result['evidence'] + result.get('evidence_history', [])
@@ -18,16 +49,30 @@ def adapt(result, root, run_id, started_at, completed_at, resumed=False):
         if existing is not None and existing != item:
             raise ValueError('conflicting evidence metadata')
         evidence_by_id[item['id']] = item
-    evidence = copy.deepcopy(list(evidence_by_id.values()))
+    native_evidence = list(evidence_by_id.values())
+    bodies = {
+        item['id']: (Path(root) / item['snapshot_path']).read_bytes()
+        for item in native_evidence
+    }
+    claims_by_evidence = {}
+    historical_claims = [
+        change[side] for change in result['refresh']['changes'] for side in ('before', 'after')
+        if change[side] is not None
+    ] + result.get('last_known', {}).get('claims', [])
+    for claim in result['claims'] + historical_claims:
+        claims_by_evidence.setdefault(claim['evidence_id'], {})[claim['id']] = claim
+
+    evidence = copy.deepcopy(native_evidence)
     for item in evidence:
         original_class = item['source_class']
         item['native_source_class'] = original_class
         if original_class == 'verified_company_website':
             item['source_class'] = 'company_owned'
-        # This is a literal excerpt, not an invented paraphrase. Native claim
-        # pointers/spans and immutable snapshots retain the complete support.
-        body = (Path(root) / item['snapshot_path']).read_bytes()
-        item['claim_span'] = body.decode('utf-8', errors='replace')[:2048]
+        excerpts = [
+            _claim_excerpt(claim, item, bodies[item['id']])
+            for claim in claims_by_evidence.get(item['id'], {}).values()
+        ]
+        item['claim_span'] = '\n'.join(dict.fromkeys(excerpts)) if excerpts else ''
     refs = {item['id']: item for item in evidence}
     claims = []
     for native in result['claims']:
