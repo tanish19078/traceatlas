@@ -90,14 +90,33 @@ def company_summary(result):
     if dated_news:
         story = dated_news[0]
         parts.append('Latest company news (' + str(story.get('datePublished')) + '): ' + str(story.get('headline')))
-    accounts = [claim['value'] for claim in result.get('claims', []) if claim['field'] == 'financials' and isinstance(claim.get('value'), dict)]
+    financials = [claim['value'] for claim in result.get('claims', [])
+                  if claim['field'] == 'financials' and isinstance(claim.get('value'), dict)]
+    accounts = []
+    for value in financials:
+        if value.get('metric') == 'revenue' and isinstance(value.get('amount'), (int, float)):
+            accounts.append(dict(value, revenue=value['amount']))
+        elif isinstance(value.get('revenue'), (int, float)):
+            accounts.append(value)
     accounts.sort(key=lambda item: str(item.get('period_end', '')), reverse=True)
     if accounts:
         latest = accounts[0]
-        comparable = next((item for item in accounts[1:] if item.get('report_type') == latest.get('report_type') and item.get('currency') == latest.get('currency')), None)
+        comparable = None
+        for item in accounts[1:]:
+            if (item.get('report_type') != latest.get('report_type')
+                    or item.get('currency') != latest.get('currency')):
+                continue
+            try:
+                if int(str(latest['period_end'])[:4]) - int(str(item['period_end'])[:4]) == 1:
+                    comparable = item
+                    break
+            except (KeyError, TypeError, ValueError):
+                continue
         revenue = latest['revenue']
         currency = latest.get('currency') or 'currency unreported'
-        statement = 'Revenue was ' + format(revenue, ',.0f') + ' ' + currency + ' in ' + str(latest['period_end'])[:4]
+        scope = 'consolidated accounts' if latest.get('report_type') == 'KONSERN' else 'company accounts'
+        statement = ('Revenue was ' + format(revenue, ',.0f') + ' ' + currency + ' in '
+                     + str(latest['period_end'])[:4] + ' (' + scope + ')')
         if comparable and comparable['revenue'] != 0:
             change = (revenue - comparable['revenue']) / abs(comparable['revenue']) * 100
             direction = 'up' if change > 0 else 'down' if change < 0 else 'unchanged'
@@ -105,6 +124,18 @@ def company_summary(result):
         else:
             statement += '; no comparable prior period was available'
         parts.append(statement)
+        latest_metrics = {
+            item.get('metric'): item.get('amount') for item in financials
+            if item.get('period_end') == latest.get('period_end')
+            and item.get('report_type') == latest.get('report_type')
+            and item.get('currency') == latest.get('currency')
+        }
+        if isinstance(latest_metrics.get('annual_result'), (int, float)):
+            parts.append('Annual result was ' + format(latest_metrics['annual_result'], ',.0f')
+                         + ' ' + currency + ' for the same period')
+        if isinstance(latest_metrics.get('total_equity'), (int, float)):
+            parts.append('Total equity was ' + format(latest_metrics['total_equity'], ',.0f')
+                         + ' ' + currency + ' at period end')
     return '. '.join(parts) + '.'
 
 
